@@ -141,6 +141,7 @@ APP_URL = env("APP_URL", "http://localhost:5173")
 
 LOGGING = {
     "version": 1,
+    "disable_existing_loggers": False,   # keep Django's own loggers (request log, security warnings)
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
 }

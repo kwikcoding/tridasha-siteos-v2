@@ -27,7 +27,11 @@ def sign_in(page: Page, role: str):
     page.goto(f"{BASE}/login")
     page.get_by_label("Mobile number").fill(MOBILE[role])
     page.get_by_label("Password").fill(PW)
-    page.get_by_role("button", name="Sign in").click()
+    expect(page.get_by_label("Mobile number")).to_have_value(MOBILE[role])
+    with page.expect_response(lambda r: "/api/auth/login/" in r.url) as resp:
+        page.get_by_role("button", name="Sign in").click()
+    r = resp.value
+    assert r.status == 200, (role, r.status, r.text()[:300])
     expect(page.get_by_text(re.compile(r"Good day"))).to_be_visible(timeout=15_000)
 
 
