@@ -130,11 +130,13 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          for f in e2e.log django.log vite.log; do
+          grep -E "PASSED|FAILED|ERROR" e2e.log > e2e-summary.log || true
+          tail -c 5000 django.log > django-tail.log 2>/dev/null || echo "no django.log" > django-tail.log
+          for f in e2e-summary.log django-tail.log e2e.log vite.log; do
             [ -f $f ] || continue
             python - "$f" <<'PY'
           import sys
           t = open(sys.argv[1]).read()[-6000:]
-          print("::error title=" + sys.argv[1] + "::" + t.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          print("::error title=" + sys.argv[1] + "::" + (t or "(empty)").replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
           PY
           done
