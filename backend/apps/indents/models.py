@@ -35,6 +35,7 @@ class Indent(models.Model):
 
     number = models.CharField(max_length=30, unique=True)
     site = models.ForeignKey("sites.Site", on_delete=models.PROTECT, related_name="indents")
+    project = models.ForeignKey("sites.Project", null=True, blank=True, on_delete=models.PROTECT, related_name="indents")
     # 01 — the request
     material = models.ForeignKey("materials.Material", null=True, blank=True, on_delete=models.PROTECT,
                                  related_name="indents")

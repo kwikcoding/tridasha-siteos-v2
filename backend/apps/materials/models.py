@@ -69,6 +69,8 @@ class StockEntry(models.Model):
                ("adjust", "Stock count adjustment"), ("manual", "Manual entry"), ("v1", "Imported from SiteOS v1")]
 
     site = models.ForeignKey("sites.Site", on_delete=models.PROTECT, related_name="stock_entries")
+    project = models.ForeignKey("sites.Project", null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="stock_entries")   # which project the material went to / came for
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name="stock_entries")
     date = models.DateField()
     kind = models.CharField(max_length=3, choices=KINDS)

@@ -130,7 +130,7 @@ RECEIVE_FIELDS = {"grn_no", "inspection"}
 # actions that only take a remark (no step data)
 REMARK_ONLY = {"reject", "sendback", "hold", "resume", "cancel", "rejectVendor", "purchase", "cancelBalance",
                "holdInv", "returnInv", "holdPay"}
-REQUEST_FIELDS = {"site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
+REQUEST_FIELDS = {"site", "project", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
 
 # Default steps for the built-in roles.
 DEFAULT_ROLE_STAGES = {

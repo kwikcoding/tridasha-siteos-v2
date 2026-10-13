@@ -43,6 +43,12 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.audit",
     "apps.legacy",
+    "apps.core",
+    "apps.sitework",
+    "apps.finance",
+    "apps.compliance",
+    "apps.plant",
+    "apps.reports",
 ]
 
 MIDDLEWARE = [

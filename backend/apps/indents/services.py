@@ -8,7 +8,7 @@ from rest_framework import serializers
 from . import workflow as wf
 from .models import Indent, IndentEvent, WorkflowSettings
 
-DATA_FIELDS = sorted(set().union(*wf.STAGE_FIELDS.values()) | wf.REQUEST_FIELDS - {"site", "material"})
+DATA_FIELDS = sorted(set().union(*wf.STAGE_FIELDS.values()) | wf.REQUEST_FIELDS - {"site", "project", "material"})
 
 
 class ActionDataSerializer(serializers.ModelSerializer):
@@ -179,7 +179,7 @@ def _post_stock(indent, action, entry, clean, user):
     if not indent.material_id or action not in ("issue", "receive", "issueClose"):
         return
     from apps.materials.services import StockError, post_entry
-    common = dict(site=indent.site, material=indent.material, by=user, indent=indent)
+    common = dict(site=indent.site, material=indent.material, by=user, indent=indent, project=indent.project)
     try:
         if action == "issue":
             post_entry(kind="OUT", qty=entry["qty"], source="indent-issue", ref=indent.number,
