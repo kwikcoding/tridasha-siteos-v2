@@ -1,0 +1,63 @@
+# Local development:  cp .env.example .env  &&  docker compose up --build
+#   frontend  http://localhost:5173      API docs  http://localhost:8000/api/docs/
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: siteos
+      POSTGRES_PASSWORD: siteos
+      POSTGRES_DB: siteos
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "siteos"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://siteos:siteos@db:5432/siteos
+      REDIS_URL: redis://redis:6379/0
+    command: sh -c "python manage.py migrate --noinput && python manage.py seed && python manage.py runserver 0.0.0.0:8000"
+    volumes: ["./backend:/app"]
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+
+  worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://siteos:siteos@db:5432/siteos
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A config worker -l info
+    volumes: ["./backend:/app"]
+    depends_on: [backend, redis]
+
+  beat:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://siteos:siteos@db:5432/siteos
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    volumes: ["./backend:/app"]
+    depends_on: [backend, redis]
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    environment:
+      API_TARGET: http://backend:8000
+    volumes: ["./frontend:/app", "/app/node_modules"]
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:

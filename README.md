@@ -1,3 +1,85 @@
 # Tridasha SiteOS v2
 
-React + TypeScript frontend, Django + DRF backend, PostgreSQL. Work in progress — Phase 1 scaffold.
+The construction ERP for Tridasha Imperial, rebuilt as:
+
+| Part | Tech |
+|---|---|
+| `frontend/` | React 18 + TypeScript, Vite, Tailwind, React Router, TanStack Query |
+| `backend/` | Django 5 + Django REST Framework, PostgreSQL 16 |
+| Alerts & scheduled checks | Celery + Redis (WhatsApp Cloud API, email, SMS via MSG91) — no n8n |
+| Data in / out | Excel/CSV uploads and Excel downloads — no live Google Sheets |
+
+## Phase 1 (this commit)
+
+- **Mobile + password login** (secure session cookie, CSRF, login rate limit).
+- **Admin-managed roles and one login per person** — built-in roles plus custom roles; each role picks the workflow steps it acts on, the modules it can see/change, and whether it works on all sites.
+- **The 12-step indent & purchase workflow** (`backend/apps/indents/workflow.py`), enforced on the server:
+  `01 raise → 02 stock → 03 technical → 04 requirement & budget → stock available? → 05 quotations → 06 supplier → 07 PO → 08 delivery (+09 receive) → 10 issue & close`, then the purchase lane `11 invoice → 12 payment`.
+  Status only changes through `POST /api/indents/{id}/act/`; every action is written to an append-only history.
+- **Alerts**: "indent waiting for you", "sent back / rejected / complete", "delivery overdue" (every 3 h), daily "waiting more than a day" digest. In-app bell always; WhatsApp / email / SMS when configured.
+- **Excel download** of indents.
+- Sites, Team & roles admin screens.
+
+Next phases: materials register + stock ledger (with .xlsx upload), take-off, DPR, labour, expenses, dashboard, then data migration from v1.
+
+## Run it locally (Docker — easiest)
+
+```bash
+cp .env.example .env          # set ADMIN_MOBILE and ADMIN_PASSWORD for your first login
+docker compose up --build
+```
+
+- App: http://localhost:5173  — sign in with ADMIN_MOBILE / ADMIN_PASSWORD
+- API docs: http://localhost:8000/api/docs/
+- Then: Team & roles → add a site → add people (one login each, with a role).
+
+## Run without Docker
+
+```bash
+# backend (needs Postgres and Redis running)
+cd backend
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+export DJANGO_DEBUG=1 DATABASE_URL=postgres://siteos:siteos@localhost:5432/siteos
+python manage.py migrate && ADMIN_MOBILE=98xxxxxxxx ADMIN_PASSWORD='choose-one' python manage.py seed
+python manage.py runserver
+celery -A config worker -l info      # second terminal (alerts)
+celery -A config beat -l info        # third terminal (scheduled checks)
+
+# frontend
+cd frontend && npm install && npm run dev
+```
+
+## Tests
+
+```bash
+cd backend
+python -m unittest apps.indents.tests.test_workflow     # workflow engine, no database
+python manage.py test apps                              # API tests (needs Postgres)
+```
+
+GitHub Actions runs both, plus a frontend type-check and build, on every push.
+
+## VS Code
+
+Open the repo folder. Accept the recommended extensions (Python, Pylance, Ruff, ESLint, Tailwind, Docker).
+Create `backend/.venv` as above so VS Code picks the interpreter automatically.
+
+## Changing the database models
+
+After editing a `models.py`, run `python manage.py makemigrations` and commit the new file.
+No local Python? Run **Actions → Make migrations → Run workflow** and download the files from the run.
+
+## Layout
+
+```
+backend/
+  config/            settings, urls, celery
+  apps/accounts/     User (mobile login), Role, auth + team APIs, `manage.py seed`
+  apps/sites/        Site
+  apps/indents/      workflow.py (12 steps), models, services (the only writer), API, tests
+  apps/alerts/       Notification, channels (WhatsApp/email/SMS), Celery tasks
+frontend/src/
+  pages/             Login, Indents, IndentDetail (tracker + actions), NewIndent, Team
+  api.ts auth.tsx    fetch wrapper (CSRF), session/me
+```

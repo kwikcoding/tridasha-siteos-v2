@@ -1,0 +1,27 @@
+# Manual helper: generates Django migration files and uploads them as an artifact
+# (useful when you can't run Django locally). Actions → "Make migrations" → Run workflow.
+name: Make migrations
+
+on: workflow_dispatch
+
+jobs:
+  makemigrations:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: ci-only
+      DATABASE_URL: sqlite:///tmp/x.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python manage.py makemigrations sites accounts indents alerts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: migrations
+          path: backend/apps/*/migrations/0*.py
