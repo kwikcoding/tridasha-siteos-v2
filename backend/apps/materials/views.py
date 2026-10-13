@@ -68,13 +68,22 @@ class ImportMixin:
             res = services.run_import(self.import_kind, f.name, f.read(), ser.validated_data["commit"])
         except importer.ImportError_ as e:
             raise ValidationError({"detail": str(e)})
+        if res["committed"]:
+            from apps.audit.log import record
+            record(f"import.{self.import_kind}", actor=request.user, target_type=self.import_kind,
+                   summary=f"Uploaded {f.name}: {res['create']} new, {res['update']} updated, {res['error_count']} skipped",
+                   changes={"file": f.name, "create": res["create"], "update": res["update"]}, request=request)
         return Response(res, status=status.HTTP_200_OK)
+
+
+MAT_PERMS = dict(import_file="materials.import", export="materials.export", categories="materials.view",
+                 stats="materials.view", balances="materials.view")
 
 
 class MaterialViewSet(ImportMixin, viewsets.ModelViewSet):
     """Material catalogue. ?site=<id> adds that site's stock balance to each item."""
     serializer_class = MaterialSerializer
-    permission_classes = [permissions.IsAuthenticated, module_permission("materials")]
+    permission_classes = [permissions.IsAuthenticated, module_permission("materials", **MAT_PERMS)]
     search_fields = ["code", "name", "category", "spec"]
     filterset_fields = ["category", "active"]
     ordering_fields = ["code", "name", "category", "updated_at"]
@@ -83,7 +92,7 @@ class MaterialViewSet(ImportMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         # indent raisers need to search the catalogue even without the materials module
-        if self.action in ("list", "retrieve") and self.request.user.is_authenticated and self.request.user.can_view("indents"):
+        if self.action in ("list", "retrieve") and self.request.user.is_authenticated and self.request.user.has_code("indents.create"):
             return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
@@ -114,7 +123,7 @@ class RegisterViewSet(ImportMixin, viewsets.ModelViewSet):
     """High-rise materials register."""
     queryset = RegisterItem.objects.select_related("material")
     serializer_class = RegisterItemSerializer
-    permission_classes = [permissions.IsAuthenticated, module_permission("materials")]
+    permission_classes = [permissions.IsAuthenticated, module_permission("materials", **MAT_PERMS)]
     search_fields = ["item_id", "item", "system", "trade", "make", "vendor", "spec"]
     filterset_fields = ["trade", "applicability", "status", "material"]
     ordering_fields = ["item_id", "trade", "required_by", "updated_at"]
@@ -148,7 +157,7 @@ class RegisterViewSet(ImportMixin, viewsets.ModelViewSet):
 class StockViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Stock ledger. Entries are never edited or deleted — post an adjustment instead."""
     serializer_class = StockEntrySerializer
-    permission_classes = [permissions.IsAuthenticated, module_permission("materials")]
+    permission_classes = [permissions.IsAuthenticated, module_permission("materials", create="materials.stock", **MAT_PERMS)]
     filterset_fields = {"site": ["exact"], "material": ["exact"], "kind": ["exact"], "source": ["exact"],
                         "date": ["gte", "lte"], "indent": ["exact"]}
     search_fields = ["material__code", "material__name", "ref", "party", "note"]
@@ -174,6 +183,9 @@ class StockViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gene
                                     party=v.get("party", ""), note=v.get("note", ""))
         except services.StockError as err:
             raise ValidationError({"detail": str(err)})
+        from apps.audit.log import record
+        record("stock.entry", actor=request.user, target=e, summary=f"{e.get_kind_display()} {e.qty} {material.unit} "
+               f"{material.code} at {site.code}", changes={"source": e.source, "note": e.note}, request=request)
         return Response(StockEntrySerializer(e).data, status=status.HTTP_201_CREATED)
 
     def _balances(self, site):

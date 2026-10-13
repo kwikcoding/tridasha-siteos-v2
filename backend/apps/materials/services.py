@@ -97,3 +97,19 @@ def run_import(kind: str, filename: str, content: bytes, commit: bool) -> dict:
                 model.objects.bulk_update([o for o, _ in update], all_fields, batch_size=500)
         result["committed"] = True
     return result
+
+
+def low_stock_count(user) -> int:
+    """Catalogue items at or below their reorder level, on the sites this person can see."""
+    from django.db.models import Sum
+
+    from apps.sites.models import Site
+    sites = Site.objects.filter(active=True)
+    if not user.all_sites:
+        sites = sites.filter(pk__in=user.site_ids())
+    levels = dict(Material.objects.filter(active=True, reorder_level__isnull=False).values_list("id", "reorder_level"))
+    if not levels:
+        return 0
+    rows = (StockEntry.objects.filter(site__in=sites, material_id__in=levels).values("site", "material")
+            .annotate(b=Sum(StockEntry.signed_qty())))
+    return sum(1 for r in rows if r["b"] <= levels[r["material"]])

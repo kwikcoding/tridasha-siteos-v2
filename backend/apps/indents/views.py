@@ -26,7 +26,8 @@ def _wf_error(e):
 class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
                     mixins.UpdateModelMixin, viewsets.GenericViewSet):
     """Indents. Status only moves through POST /indents/{id}/act/."""
-    permission_classes = [permissions.IsAuthenticated, module_permission("indents")]
+    permission_classes = [permissions.IsAuthenticated,
+                          module_permission("indents", act="indents.view", export="indents.export")]
     search_fields = ["number", "item", "item_code", "po_no", "po_vendor", "purpose"]
     filterset_fields = ["site", "status", "stage", "pstage", "priority"]
     ordering_fields = ["created_at", "need_by", "number", "stage_entered_at"]
@@ -73,7 +74,7 @@ class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
             ctx = self.get_serializer_context()
             candidates = qs.exclude(status__in=final, pstage__in=["", "closed"])
             ids = [i.pk for i in candidates
-                   if wf.allowed_actions(i.as_engine_dict([{"action": e.action} for e in i.history.all()]),
+                   if wf.allowed_actions(i.as_engine_dict([{"action": e.action, "by": e.by_id} for e in i.history.all()]),
                                          ctx["who"], ctx["cfg"])]
             qs = qs.filter(pk__in=ids)
         page = self.paginate_queryset(qs)
@@ -166,7 +167,9 @@ def workflow_meta(request):
 @api_view(["PUT"])
 @permission_classes([permissions.IsAuthenticated, IsAdmin])
 def workflow_settings(request):
+    from apps.audit.log import record
     obj = WorkflowSettings.load()
+    before = {"stages": obj.stages, "mgmt_limit": str(obj.mgmt_limit), "mgmt_never": obj.mgmt_never}
     stages = request.data.get("stages") or {}
     if not isinstance(stages, dict) or any(k not in wf.STAGE for k in stages):
         raise ValidationError({"stages": "Unknown step."})
@@ -178,4 +181,7 @@ def workflow_settings(request):
         raise ValidationError({"mgmt_limit": "Enter an amount."})
     obj.mgmt_never = bool(request.data.get("mgmt_never"))
     obj.save()
+    record("workflow.settings", actor=request.user, summary="Workflow settings changed", request=request,
+           changes={"before": before, "after": {"stages": obj.stages, "mgmt_limit": str(obj.mgmt_limit),
+                                                "mgmt_never": obj.mgmt_never}})
     return Response(_meta_payload())

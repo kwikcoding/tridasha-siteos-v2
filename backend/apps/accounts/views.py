@@ -2,14 +2,18 @@ from django.contrib.auth import authenticate, login, logout, update_session_auth
 from django.db.models import ProtectedError
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from .models import Role, User, normalize_mobile
+from apps.audit.log import diff, record
+
+from . import perms
+from .models import Department, Role, User, normalize_mobile
 from .permissions import IsAdmin
-from .serializers import ChangePasswordSerializer, LoginSerializer, MeSerializer, RoleSerializer, UserSerializer
+from .serializers import (ChangePasswordSerializer, DepartmentSerializer, LoginSerializer, MeSerializer,
+                          ResetPasswordSerializer, RoleSerializer, UserSerializer)
 
 
 class LoginThrottle(SimpleRateThrottle):
@@ -18,6 +22,11 @@ class LoginThrottle(SimpleRateThrottle):
 
     def get_cache_key(self, request, view):
         return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
+def _mask(mobile):
+    m = normalize_mobile(mobile)
+    return (m[:2] + "••••" + m[-4:]) if len(m) == 10 else "••••"
 
 
 @api_view(["GET"])
@@ -34,16 +43,21 @@ def csrf(request):
 def login_view(request):
     ser = LoginSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
-    user = authenticate(request, mobile=normalize_mobile(ser.validated_data["mobile"]),
-                        password=ser.validated_data["password"])
+    mobile = normalize_mobile(ser.validated_data["mobile"])
+    user = authenticate(request, mobile=mobile, password=ser.validated_data["password"])
     if not user:
+        known = User.objects.filter(mobile=mobile).first()
+        record("login.failed", target=known, target_type="user", summary=f"Failed sign-in for {_mask(mobile)}",
+               request=request)
         return Response({"detail": "Wrong mobile number or password."}, status=status.HTTP_400_BAD_REQUEST)
     login(request, user)
+    record("login.success", actor=user, target=user, summary=f"{user.name} signed in", request=request)
     return Response(MeSerializer(user).data)
 
 
 @api_view(["POST"])
 def logout_view(request):
+    record("logout", actor=request.user, target=request.user, summary=f"{request.user.name} signed out", request=request)
     logout(request)
     return Response({"ok": True})
 
@@ -57,22 +71,119 @@ def me(request):
 def change_password(request):
     ser = ChangePasswordSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
-    if not request.user.check_password(ser.validated_data["current"]):
+    u = request.user
+    if not u.check_password(ser.validated_data["current"]):
         raise ValidationError({"current": "Current password is wrong."})
-    request.user.set_password(ser.validated_data["new"])
-    request.user.save(update_fields=["password"])
-    update_session_auth_hash(request, request.user)
-    return Response({"ok": True})
+    if ser.validated_data["current"] == ser.validated_data["new"]:
+        raise ValidationError({"new": "Choose a password different from the current one."})
+    u.set_password(ser.validated_data["new"])
+    u.must_change_password = False
+    u.save(update_fields=["password", "must_change_password"])
+    update_session_auth_hash(request, u)
+    record("password.change", actor=u, target=u, summary=f"{u.name} changed their password", request=request)
+    return Response(MeSerializer(u).data)
+
+
+@api_view(["GET"])
+def pending(request):
+    """Counts for the badges and the dashboard: what is waiting for me."""
+    from apps.indents import workflow as wf
+    from apps.indents.models import Indent, WorkflowSettings
+    u = request.user
+    out = {"indents": 0, "purchases": 0, "low_stock": 0}
+    if u.can_view("indents"):
+        cfg = WorkflowSettings.load().cfg()
+        who = u.as_who()
+        qs = Indent.objects.exclude(status__in=list(wf.FINAL), pstage__in=["", "closed"]).prefetch_related("history")
+        if not u.all_sites:
+            qs = qs.filter(site__in=u.site_ids()) | qs.filter(raised_by=u)
+        for i in qs.distinct():
+            d = i.as_engine_dict([{"action": e.action, "by": e.by_id} for e in i.history.all()])
+            acts = wf.allowed_actions(d, who, cfg)
+            if any(a in wf.PURCHASE_ACTIONS for a in acts):
+                out["purchases"] += 1
+            if any(a not in wf.PURCHASE_ACTIONS for a in acts):
+                out["indents"] += 1
+    if u.can_view("materials"):
+        from apps.materials.services import low_stock_count
+        out["low_stock"] = low_stock_count(u)
+    out["total"] = out["indents"] + out["purchases"]
+    return Response(out)
+
+
+@api_view(["GET"])
+def permission_catalogue(request):
+    from apps.indents.workflow import STAGES
+    return Response({
+        "modules": perms.catalogue(),
+        "steps": [{"key": s.key, "n": s.n, "short": s.short, "dept": s.dept, "lane": s.lane, "actions": list(s.actions)}
+                  for s in STAGES],
+    })
+
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.select_related("head")
+    serializer_class = DepartmentSerializer
+    pagination_class = None
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated(), IsAdmin()]
+
+    def perform_create(self, ser):
+        d = ser.save()
+        record("department.create", actor=self.request.user, target=d, summary=f"Department {d.name} added",
+               request=self.request)
+
+    def perform_update(self, ser):
+        changes = diff(ser.instance, ser.validated_data)
+        d = ser.save()
+        record("department.update", actor=self.request.user, target=d, summary=f"Department {d.name} changed",
+               changes=changes, request=self.request)
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    """Team: the administrator creates a separate login for each person and gives them a role."""
-    queryset = User.objects.select_related("role").prefetch_related("sites")
+    """Team: the administrator creates a separate login for each person and gives them roles."""
+    queryset = User.objects.select_related("role", "department", "reporting_manager").prefetch_related("sites", "extra_roles")
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
-    search_fields = ["name", "mobile", "email"]
-    filterset_fields = ["role", "is_active"]
+    search_fields = ["name", "mobile", "email", "employee_id", "designation"]
+    filterset_fields = ["role", "is_active", "department"]
     http_method_names = ["get", "post", "patch", "head", "options"]   # deactivate instead of delete
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            from .permissions import module_permission
+            return [permissions.IsAuthenticated(), module_permission("team")()]
+        return [permissions.IsAuthenticated(), IsAdmin()]
+
+    def perform_create(self, ser):
+        u = ser.save()
+        record("user.create", actor=self.request.user, target=u, summary=f"Login created for {u.name}",
+               changes={k: v for k, v in ser.validated_data.items() if k != "password"}, request=self.request)
+
+    def perform_update(self, ser):
+        changes = diff(ser.instance, {k: v for k, v in ser.validated_data.items() if k != "password"})
+        u = ser.save()
+        if changes:
+            what = "deactivated" if changes.get("is_active", [None, True])[1] is False else "changed"
+            record("user.update", actor=self.request.user, target=u, summary=f"{u.name} {what}", changes=changes,
+                   request=self.request)
+
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request, pk=None):
+        """Administrator sets a temporary password; the person must change it at their next sign-in."""
+        u = self.get_object()
+        ser = ResetPasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        u.set_password(ser.validated_data["password"])
+        u.must_change_password = u.pk != request.user.pk
+        u.save(update_fields=["password", "must_change_password"])
+        if u.pk == request.user.pk:
+            update_session_auth_hash(request, u)
+        record("password.reset", actor=request.user, target=u, summary=f"Password reset for {u.name}", request=request)
+        return Response(UserSerializer(u, context={"request": request}).data)
 
 
 class RoleViewSet(viewsets.ModelViewSet):
@@ -85,12 +196,28 @@ class RoleViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated()]
         return [permissions.IsAuthenticated(), IsAdmin()]
 
+    def perform_create(self, ser):
+        r = ser.save()
+        record("role.create", actor=self.request.user, target=r, summary=f"Role {r.label} created",
+               changes=ser.validated_data, request=self.request)
+
+    def perform_update(self, ser):
+        changes = diff(ser.instance, ser.validated_data)
+        r = ser.save()
+        if changes:
+            record("role.update", actor=self.request.user, target=r, summary=f"Role {r.label} changed", changes=changes,
+                   request=self.request)
+
     def destroy(self, request, *args, **kwargs):
         role = self.get_object()
         if role.builtin:
             raise ValidationError({"detail": "Built-in roles can’t be deleted — switch their steps off instead."})
+        if role.extra_users.exists():
+            raise ValidationError({"detail": "People still have this role. Give them another role first."})
         try:
             role.delete()
         except ProtectedError:
             raise ValidationError({"detail": "People still have this role. Give them another role first."})
+        record("role.delete", actor=request.user, target_type="role", target_id=str(kwargs.get("pk")),
+               summary=f"Role {role.label} deleted", request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)

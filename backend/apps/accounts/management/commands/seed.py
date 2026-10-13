@@ -22,8 +22,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         for key, r in BUILTIN_ROLES.items():
-            fields = dict(label=r["label"], description=r["description"], color=r["color"], view=r["view"],
-                          edit=r["edit"], stages=r["stages"], can_approve=r.get("can_approve", False),
+            fields = dict(label=r["label"], description=r["description"], color=r["color"], permissions=r["permissions"],
+                          stages=r["stages"], step_actions=r["step_actions"], can_approve=r.get("can_approve", False),
                           all_sites=r.get("all_sites", False), builtin=True)
             role, created = Role.objects.get_or_create(key=key, defaults=fields)
             if not created and (opts["reset_roles"] or key == "admin"):

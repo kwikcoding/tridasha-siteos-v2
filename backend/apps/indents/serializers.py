@@ -11,7 +11,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = IndentEvent
         fields = ["id", "action", "label", "lane", "stage", "from_status", "to_status", "to_stage", "by", "by_name",
-                  "at", "remarks", "qty", "qty_to", "sent_to", "grn_no", "inspection", "changes"]
+                  "at", "remarks", "qty", "qty_to", "sent_to", "grn_no", "inspection", "changes", "override"]
 
 
 class IndentListSerializer(serializers.ModelSerializer):
@@ -35,7 +35,7 @@ class IndentListSerializer(serializers.ModelSerializer):
     def _engine(self, obj):
         cache = self.context.setdefault("_engine", {})
         if obj.pk not in cache:
-            hist = [{"action": e.action} for e in obj.history.all()]   # prefetched
+            hist = [{"action": e.action, "by": e.by_id} for e in obj.history.all()]   # prefetched
             cache[obj.pk] = obj.as_engine_dict(hist)
         return cache[obj.pk]
 
