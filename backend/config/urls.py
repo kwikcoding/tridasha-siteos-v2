@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 from apps.accounts import views as acc
 from apps.alerts.views import NotificationViewSet
 from apps.indents import views as ind
+from apps.materials import views as mat
 from apps.sites.views import SiteViewSet
 
 router = DefaultRouter()
@@ -14,6 +15,9 @@ router.register("users", acc.UserViewSet, basename="user")
 router.register("roles", acc.RoleViewSet, basename="role")
 router.register("sites", SiteViewSet, basename="site")
 router.register("indents", ind.IndentViewSet, basename="indent")
+router.register("materials", mat.MaterialViewSet, basename="material")
+router.register("register", mat.RegisterViewSet, basename="register")
+router.register("stock", mat.StockViewSet, basename="stock")
 router.register("notifications", NotificationViewSet, basename="notification")
 
 api = [

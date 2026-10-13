@@ -34,6 +34,8 @@ class Indent(models.Model):
     number = models.CharField(max_length=30, unique=True)
     site = models.ForeignKey("sites.Site", on_delete=models.PROTECT, related_name="indents")
     # 01 — the request
+    material = models.ForeignKey("materials.Material", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="indents")
     item = models.CharField(max_length=200)
     item_code = models.CharField(max_length=50, blank=True)
     unit = models.CharField(max_length=20, blank=True)

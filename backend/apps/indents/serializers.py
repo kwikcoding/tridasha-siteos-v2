@@ -24,7 +24,7 @@ class IndentListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Indent
-        fields = ["id", "number", "site", "site_name", "item", "item_code", "unit", "qty", "approved_qty", "need_by",
+        fields = ["id", "number", "site", "site_name", "material", "item", "item_code", "unit", "qty", "approved_qty", "need_by",
                   "priority", "status", "stage", "stage_label", "pstatus", "pstage", "waiting_with", "purchase_with",
                   "raised_by", "raised_by_name", "po_no", "po_vendor", "po_expected", "stage_entered_at",
                   "allowed_actions", "created_at", "updated_at"]
@@ -56,6 +56,18 @@ class IndentListSerializer(serializers.ModelSerializer):
 
 class IndentDetailSerializer(IndentListSerializer):
     history = EventSerializer(many=True, read_only=True)
+    stock_at_site = serializers.SerializerMethodField()
+    stock_entries = serializers.SerializerMethodField()
+
+    def get_stock_at_site(self, obj):
+        if not obj.material_id:
+            return None
+        from apps.materials.models import StockEntry
+        return StockEntry.balance(obj.site_id, obj.material_id)
+
+    def get_stock_entries(self, obj):
+        return [{"id": e.id, "date": e.date, "kind": e.kind, "qty": e.qty, "ref": e.ref, "note": e.note}
+                for e in obj.stock_entries.all().order_by("date", "id")]
     steps = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     action_fields = serializers.SerializerMethodField()
@@ -97,7 +109,22 @@ class IndentDetailSerializer(IndentListSerializer):
 class IndentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Indent
-        fields = ["site", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"]
+        fields = ["site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"]
+        extra_kwargs = {"item": {"required": False, "allow_blank": True}}
+
+    def validate(self, attrs):
+        m = attrs.get("material")
+        if m:
+            if not m.active:
+                raise serializers.ValidationError({"material": "This catalogue item is switched off."})
+            attrs["item"] = attrs.get("item") or m.name
+            attrs["item_code"] = m.code
+            attrs["unit"] = attrs.get("unit") or m.unit
+            if attrs.get("est_rate") is None and m.std_rate is not None:
+                attrs["est_rate"] = m.std_rate
+        elif not (attrs.get("item") or (self.instance and self.instance.item)):
+            raise serializers.ValidationError({"item": "Choose a material from the catalogue or type its name."})
+        return attrs
 
     def validate_qty(self, v):
         if v <= 0:

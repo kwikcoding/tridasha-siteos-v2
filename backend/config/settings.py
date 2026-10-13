@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "apps.accounts",
     "apps.sites",
+    "apps.materials",
     "apps.indents",
     "apps.alerts",
 ]
