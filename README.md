@@ -20,7 +20,14 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - **Excel download** of indents.
 - Sites, Team & roles admin screens.
 
-Next phases: materials register + stock ledger (with .xlsx upload), take-off, DPR, labour, expenses, dashboard, then data migration from v1.
+## Phase 2
+
+- **Materials → Catalogue**: items the stores keep (code, name, category, unit, rate, GST, HSN, reorder level). Upload .xlsx/.csv — the app shows what will be added/updated and any bad lines before you confirm. Matched by code; blank cells never wipe data.
+- **Materials → Materials register**: the High-Rise Construction Materials Master. Upload its "Materials Register" tab as is (title rows are skipped). Filter by trade / applicability / status, edit rows, link a row to a catalogue item, download Excel.
+- **Materials → Stock**: per-site balances and the full ledger. Entries are never edited or deleted — corrections are adjustments with a reason. Stock can't go below zero.
+- **Indents ↔ stock**: pick a catalogue item when raising an indent. Store sees the site balance at the stock check; *issue from stock* posts OUT (and is blocked if stock is short), *receive* posts IN with the GRN, *issue & close* posts OUT to site.
+
+Next phases: take-off, DPR, labour, expenses, dashboard, then data migration from v1.
 
 ## Run it locally (Docker — easiest)
 
@@ -78,8 +85,9 @@ backend/
   apps/accounts/     User (mobile login), Role, auth + team APIs, `manage.py seed`
   apps/sites/        Site
   apps/indents/      workflow.py (12 steps), models, services (the only writer), API, tests
+  apps/materials/    catalogue, register, stock ledger, importer.py (xlsx/csv), services
   apps/alerts/       Notification, channels (WhatsApp/email/SMS), Celery tasks
 frontend/src/
-  pages/             Login, Indents, IndentDetail (tracker + actions), NewIndent, Team
+  pages/             Login, Indents, IndentDetail (tracker + actions), NewIndent, Materials, Team
   api.ts auth.tsx    fetch wrapper (CSRF), session/me
 ```
