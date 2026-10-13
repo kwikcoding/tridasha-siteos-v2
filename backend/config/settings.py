@@ -109,7 +109,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "config.pagination.Pagination",
     "PAGE_SIZE": 50,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_THROTTLE_RATES": {"login": "10/min"},
+    "DEFAULT_THROTTLE_RATES": {"login": env("LOGIN_RATE", "10/min")},   # sign-in attempts per IP
 }
 SPECTACULAR_SETTINGS = {"TITLE": "Tridasha SiteOS API", "VERSION": "2.0.0"}
 

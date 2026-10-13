@@ -93,6 +93,7 @@ jobs:
       DATABASE_URL: postgres://siteos:siteos@localhost:5432/siteos
       CELERY_EAGER: "1"
       DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:4173
+      LOGIN_RATE: 500/min        # many sign-ins from one IP during the browser run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
