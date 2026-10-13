@@ -124,3 +124,15 @@ class MoneyControlsAPI(TestCase):
         p = c.get("/api/auth/pending/").json()
         self.assertEqual(p["raised_open"], 54)
         self.assertEqual(Indent.objects.filter(raised_by=self.U["engineer"]).values("number").distinct().count(), 55)
+
+    def test_no_new_indent_on_closed_site_or_unassigned_site(self):
+        c = APIClient()
+        c.force_authenticate(self.U["engineer"])
+        other = Site.objects.create(code="OTH", name="Other")
+        r = c.post("/api/indents/", {"site": other.pk, "item": "Sand", "unit": "cum", "qty": 1}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.site.active = False
+        self.site.save()
+        r = c.post("/api/indents/", {"site": self.site.pk, "item": "Sand", "unit": "cum", "qty": 1}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("closed", str(r.content.decode()))

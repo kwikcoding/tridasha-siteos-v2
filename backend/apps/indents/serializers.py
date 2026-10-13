@@ -151,6 +151,8 @@ class IndentCreateSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         if not user.all_sites and site.pk not in user.site_ids():
             raise serializers.ValidationError("You aren’t assigned to this site.")
+        if not site.active:
+            raise serializers.ValidationError("This site is closed — indents can’t be raised on it.")
         return site
 
 
