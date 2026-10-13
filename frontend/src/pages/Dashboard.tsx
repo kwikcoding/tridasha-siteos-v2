@@ -19,7 +19,6 @@ export default function Dashboard() {
   const { me, can, has } = useAuth();
   const pending = useQuery({ queryKey: ["pending"], queryFn: () => get<Pending>("/auth/pending/") });
   const queue = useQuery({ queryKey: ["indents", "queue", ""], queryFn: () => get<Page<IndentRow>>("/indents/?tab=queue"), enabled: can("indents") });
-  const mine = useQuery({ queryKey: ["indents", "raised", ""], queryFn: () => get<Page<IndentRow>>("/indents/?tab=raised"), enabled: can("indents") });
   const p = pending.data;
 
   return (
@@ -33,7 +32,7 @@ export default function Dashboard() {
         {can("indents") && <Stat label="Indents waiting for you" value={p?.indents ?? "—"} to="/indents?tab=queue" tone={p?.indents ? "text-gold-600" : undefined} />}
         {can("indents") && <Stat label="Invoices & payments for you" value={p?.purchases ?? "—"} to="/indents?tab=purchases" tone={p?.purchases ? "text-gold-600" : undefined} />}
         {can("materials") && <Stat label="Items at reorder level" value={p?.low_stock ?? "—"} to="/materials?tab=stock" tone={p?.low_stock ? "text-red-600" : undefined} />}
-        {can("indents") && <Stat label="Raised by you (open)" value={mine.data ? mine.data.results.filter((i) => !["Closed", "Stock Issued", "Rejected", "Cancelled"].includes(i.status)).length : "—"} to="/indents?tab=raised" />}
+        {can("indents") && <Stat label="Raised by you (open)" value={p?.raised_open ?? "—"} to="/indents?tab=raised" />}
       </div>
 
       {can("indents") && (

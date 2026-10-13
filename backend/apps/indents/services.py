@@ -1,7 +1,7 @@
 """The only place indents change status. Views call these; nothing else writes workflow fields."""
 from decimal import Decimal
 
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -60,7 +60,16 @@ def raise_indent(user, validated: dict) -> Indent:
              "raised_by": user.pk, "history": [{"action": "raise"}]}
     indent = Indent(**validated, raised_by=user, number=next_number(validated["site"]),
                     status="Requested", stage=wf.first_stage(probe, cfg), stage_entered_at=timezone.now())
-    indent.save()
+    for attempt in range(5):          # two people raising at the same moment can draw the same number
+        try:
+            with transaction.atomic():
+                indent.save()
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise
+            indent.pk = None
+            indent.number = next_number(validated["site"])
     ev = IndentEvent.objects.create(indent=indent, action="raise", stage="raise", to_status=indent.status,
                                     to_stage=indent.stage, by=user)
     _after_commit(indent, ev)

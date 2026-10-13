@@ -82,6 +82,7 @@ export interface Pending {
   indents: number;
   purchases: number;
   low_stock: number;
+  raised_open: number;
   total: number;
 }
 

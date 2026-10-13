@@ -113,3 +113,14 @@ class MoneyControlsAPI(TestCase):
         self.assertTrue(AuditLog.objects.filter(action="workflow.settings").exists())
         iid = self.at_invoice()
         self.act("accounts", iid, "verifyInv", data={"inv_no": "INV-1", "inv_amount": "45000"})   # within 15 %
+
+    def test_raised_open_counts_beyond_first_page(self):
+        c = APIClient()
+        c.force_authenticate(self.U["engineer"])
+        for _ in range(55):            # more than one page of 50
+            c.post("/api/indents/", {"site": self.site.pk, "item": "Sand", "unit": "cum", "qty": 1}, format="json")
+        first = Indent.objects.filter(raised_by=self.U["engineer"]).first()
+        self.act("engineer", first.pk, "cancel", remarks="Not needed")
+        p = c.get("/api/auth/pending/").json()
+        self.assertEqual(p["raised_open"], 54)
+        self.assertEqual(Indent.objects.filter(raised_by=self.U["engineer"]).values("number").distinct().count(), 55)
