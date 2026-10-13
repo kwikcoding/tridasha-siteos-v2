@@ -38,6 +38,16 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - Audit log covers sign-ins (and failed attempts), logins created/changed, password resets, role and permission changes, overrides, stock entries, uploads and workflow settings.
 - Sidebar, Dashboard (pending approvals and counts), Profile (change password), Access denied, Settings (workflow steps & management limit).
 
+## Verification pass (October 2026)
+
+- **Step 11 — three-way match**: the invoice (before GST) is compared with PO rate × quantity received on GRNs. A difference beyond the tolerance (default 1 %, *Settings → Workflow*) needs a written reason, which is kept in the history.
+- **Step 12a** records the **amount authorised** — never more than the verified invoice incl. GST.
+- **Step 12b** records each payment with its amount. Part payments are allowed (*Part Paid*); the total can't exceed the authorised amount; the same payment reference can't be recorded twice on an indent. The purchase closes when the authorised amount is fully paid.
+- **Step 09** refuses receiving more than is still on order.
+- No new indents on a closed site. Dashboard "Raised by you" counts every open indent (it used to stop at 50).
+- **Fixed sign-in bounce** in the production build (the app could return to the login page after a successful sign-in).
+- Full results: [VERIFICATION.md](VERIFICATION.md).
+
 Next phases: take-off, DPR, labour, expenses, dashboard, then data migration from v1.
 
 ## Run it locally (Docker — easiest)
@@ -76,7 +86,10 @@ python -m unittest apps.indents.tests.test_workflow     # workflow engine, no da
 python manage.py test apps                              # API tests (needs Postgres)
 ```
 
-GitHub Actions runs both, plus a frontend type-check and build, on every push.
+GitHub Actions runs both, plus a frontend type-check and build, on every push — and **browser tests**
+(`e2e/`, Playwright + Chromium): every role signs in through the login form against the production build, the
+sidebar and direct-URL restrictions are checked, an indent is raised and stock-checked in the browser, and the main
+pages are checked at phone width. Test logins exist only in the throw-away CI database.
 
 ## VS Code
 
