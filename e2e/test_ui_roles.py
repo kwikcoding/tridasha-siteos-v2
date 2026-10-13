@@ -51,6 +51,7 @@ def sign_in(page: Page, role: str):
 
 
 def sign_out(page: Page):
+    page.keyboard.press("Escape")          # close any open window first
     page.get_by_role("button", name="Log out").click()
     expect(page.get_by_role("button", name="Sign in")).to_be_visible()
 
