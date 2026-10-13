@@ -94,6 +94,7 @@ jobs:
       CELERY_EAGER: "1"
       DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:4173
       LOGIN_RATE: 500/min        # many sign-ins from one IP during the browser run
+      API_TARGET: http://127.0.0.1:8000   # Node resolves "localhost" to IPv6; runserver listens on IPv4
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -120,7 +121,8 @@ jobs:
         run: |
           (cd backend && nohup python manage.py runserver 8000 > ../django.log 2>&1 &)
           (cd frontend && nohup npx vite preview --port 4173 --strictPort > ../vite.log 2>&1 &)
-          for i in $(seq 1 30); do curl -sf http://localhost:4173/api/health/ && break; sleep 1; done
+          for i in $(seq 1 40); do curl -sf http://localhost:4173/api/health/ && break; sleep 1; done
+          curl -sf http://localhost:4173/api/health/
       - name: Browser tests
         shell: bash
         run: python -m pytest e2e -v --browser chromium 2>&1 | tee e2e.log; exit ${PIPESTATUS[0]}
