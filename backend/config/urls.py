@@ -46,6 +46,7 @@ api = [
     path("auth/me/", acc.me),
     path("auth/password/", acc.change_password),
     path("auth/pending/", acc.pending),
+    path("people/", acc.people),
     path("permissions/", acc.permission_catalogue),
     path("legacy/import/", legacy.import_v1),
     path("legacy/demo/", legacy.demo_data),

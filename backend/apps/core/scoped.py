@@ -149,7 +149,7 @@ class ScopedViewSet(viewsets.ModelViewSet):
     def attachments(self, request, pk=None):
         obj = self.get_object()
         ct = ContentType.objects.get_for_model(obj)
-        base = request.path.split(f"{pk}/attachments/")[0] + f"{pk}/"
+        base = _api_rel(request.path.split(f"{pk}/attachments/")[0] + f"{pk}/")
         return Response([a.as_dict(base) for a in Attachment.objects.filter(content_type=ct, object_id=obj.pk)
                          .select_related("uploaded_by")])
 
@@ -168,7 +168,7 @@ class ScopedViewSet(viewsets.ModelViewSet):
         a = Attachment.objects.create(record=obj, file=f, name=f.name[:200], size=f.size,
                                       purpose=str(request.data.get("purpose") or "")[:30], uploaded_by=request.user)
         self.log(obj, "attach", f"File {a.name} added to {self.label(obj)}", file=a.name, purpose=a.purpose)
-        base = request.path.split(f"{pk}/attach/")[0] + f"{pk}/"
+        base = _api_rel(request.path.split(f"{pk}/attach/")[0] + f"{pk}/")
         return Response(a.as_dict(base), status=status.HTTP_201_CREATED)
 
     def check_attach(self, obj):
@@ -182,6 +182,11 @@ class ScopedViewSet(viewsets.ModelViewSet):
         if not a:
             raise Http404
         return FileResponse(a.file.open("rb"), as_attachment=True, filename=a.name)
+
+
+def _api_rel(path):
+    """'/api/observations/5/' → '/observations/5/' (the frontend adds /api itself)."""
+    return path[4:] if path.startswith("/api/") else path
 
 
 def attachment_count(obj, purpose=None):

@@ -108,7 +108,66 @@ def pending(request):
     if u.can_view("materials"):
         from apps.materials.services import low_stock_count
         out["low_stock"] = low_stock_count(u)
+    out.update(_module_counts(u))
     out["total"] = out["indents"] + out["purchases"]
+    return Response(out)
+
+
+def _module_counts(u):
+    """Dashboard counts for the site-work modules — only for modules the role can see."""
+    from django.utils import timezone
+    today = timezone.localdate()
+    ids = None if u.all_sites else u.site_ids()
+
+    def scoped(qs):
+        return qs if ids is None else qs.filter(site__in=ids)
+    out = {}
+    if u.can_view("tasks"):
+        from apps.sitework.models import Task
+        mine = Task.objects.filter(assignee=u).exclude(status__in=Task.CLOSED)
+        out["tasks_mine"] = mine.count()
+        out["tasks_overdue"] = scoped(Task.objects.exclude(status__in=Task.CLOSED).filter(due_date__lt=today)).count()
+    if u.has_code("dpr.approve"):
+        from apps.sitework.models import DailyReport
+        out["dpr_to_approve"] = scoped(DailyReport.objects.filter(status="submitted")).exclude(created_by=u).count()
+    if u.can_view("dpr"):
+        from apps.sitework.models import DailyReport
+        out["dpr_today"] = scoped(DailyReport.objects.filter(date=today)).count()
+    if u.can_view("labour"):
+        from apps.sitework.models import Attendance
+        out["present_today"] = scoped(Attendance.objects.filter(date=today, status__in=["present", "half"])).count()
+    if u.has_code("expenses.approve"):
+        from apps.finance.models import Expense
+        out["bills_to_approve"] = scoped(Expense.objects.filter(status="submitted")).exclude(created_by=u).count()
+    if u.has_code("expenses.edit"):
+        from apps.finance.models import Expense
+        out["bills_to_pay"] = scoped(Expense.objects.filter(status__in=["approved", "part_paid"])).exclude(
+            approved_by=u).count()
+    if u.can_view("quality"):
+        from apps.compliance.models import Observation
+        out["observations_open"] = scoped(Observation.objects.exclude(status="closed")).count()
+        out["observations_mine"] = Observation.objects.filter(assigned_to=u).exclude(status="closed").count()
+    if u.can_view("equipment"):
+        from apps.plant.models import Equipment
+        out["equipment_service_due"] = Equipment.objects.filter(next_service_due__lte=today).exclude(
+            status="disposed").count()
+    return out
+
+
+@api_view(["GET"])
+def people(request):
+    """Names for pickers (assign a task, an observation, a project head): active staff on a site."""
+    qs = User.objects.filter(is_active=True).select_related("department").prefetch_related("sites", "role", "extra_roles")
+    try:
+        site = int(request.query_params.get("site") or 0)
+    except ValueError:
+        site = 0
+    out = []
+    for u in qs.order_by("name"):
+        if site and not (u.all_sites or site in u.site_ids()):
+            continue
+        out.append({"id": u.id, "name": u.name, "designation": u.designation,
+                    "department": u.department.name if u.department else ""})
     return Response(out)
 
 
