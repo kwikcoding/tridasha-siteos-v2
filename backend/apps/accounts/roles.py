@@ -1,5 +1,7 @@
 """Built-in roles (seeded into the Role table by `manage.py seed`). The admin can edit them or add new ones."""
-from apps.indents.workflow import DEFAULT_ROLE_STAGES, STAGE
+from apps.indents.workflow import DEFAULT_ROLE_STAGES, DEFAULT_STEP_ACTIONS, STAGE
+
+from .perms import ALL_CODES, from_view_edit
 
 WORK_MODULES = ["dashboard", "reports", "sites", "tasks", "dpr", "labour", "materials", "indents",
                 "equipment", "expenses", "quality", "docs"]
@@ -13,8 +15,8 @@ BUILTIN_ROLES = {
     "pm": dict(label="Project Head", color="navy", view=WORK_MODULES, edit=WORK_MODULES, can_approve=True, all_sites=True,
                description="Step 03 — verifies the technical requirement (specification, quantity, actual site need)."),
     "qs": dict(label="QS / Quantity Surveyor", color="indigo",
-               view=["dashboard", "reports", "sites", "materials", "indents", "expenses"], edit=["indents"], all_sites=True,
-               description="Views indents with BOQ / take-off quantities and budgets."),
+               view=["dashboard", "reports", "sites", "materials", "indents", "expenses"], edit=[], all_sites=True,
+               description="Read-only: indents, BOQ / take-off quantities, budgets and cost reports."),
     "engineer": dict(label="Site Engineer", color="violet",
                      view=["dashboard", "reports", "sites", "tasks", "dpr", "labour", "materials", "indents", "equipment", "quality", "docs"],
                      edit=["tasks", "dpr", "labour", "materials", "indents", "equipment", "quality", "docs"],
@@ -40,5 +42,19 @@ BUILTIN_ROLES = {
     "viewer": dict(label="Viewer (read-only)", color="slate", view=WORK_MODULES, edit=[],
                    description="Can see everything on assigned sites, changes nothing."),
 }
+# extra permission codes beyond the plain view/edit translation
+EXTRA_CODES = {
+    "store": ["materials.import", "materials.stock", "indents.export"],
+    "accounts": ["expenses.approve", "reports.export"],
+    "management": ["expenses.approve", "dpr.approve", "reports.export", "dashboard.export"],
+    "pm": ["dpr.approve", "labour.approve", "quality.approve", "tasks.assign"],
+    "safety": ["quality.approve"],
+    "qs": ["reports.export"],
+}
 for key, r in BUILTIN_ROLES.items():
     r["stages"] = list(DEFAULT_ROLE_STAGES.get(key, []))
+    r["step_actions"] = dict(DEFAULT_STEP_ACTIONS.get(key, {}))
+    if key == "admin":
+        r["permissions"] = list(ALL_CODES)
+    else:
+        r["permissions"] = sorted(set(from_view_edit(r["view"], r["edit"])) | set(EXTRA_CODES.get(key, [])))

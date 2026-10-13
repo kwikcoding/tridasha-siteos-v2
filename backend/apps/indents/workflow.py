@@ -62,13 +62,15 @@ STAGES: list[Stage] = [
           ("issueClose",), required=True),
     Stage("11", "invoice", "purchase", "Verify supplier invoice", "Invoice", "Accounts + Purchase team",
           ("verifyInv", "holdInv", "returnInv")),
-    Stage("12", "payment", "purchase", "Settle payment & close purchase", "Payment", "Accounts + Authorised owner",
+    Stage("12a", "payauth", "purchase", "Authorise payment", "Authorise payment", "Management / Authorised approver",
+          ("authorizePay", "holdPay"), required=True),
+    Stage("12b", "payment", "purchase", "Settle payment & close purchase", "Settle payment", "Accounts",
           ("pay", "holdPay")),
 ]
 STAGE = {s.key: s for s in STAGES}
 INDENT_STAGES = [s for s in STAGES if s.lane == "indent"]
 PURCHASE_STAGES = [s for s in STAGES if s.lane == "purchase"]
-PURCHASE_ACTIONS = {"verifyInv", "holdInv", "returnInv", "pay", "holdPay"}
+PURCHASE_ACTIONS = {"verifyInv", "holdInv", "returnInv", "authorizePay", "pay", "holdPay"}
 NEEDS_REMARK = {"reject", "sendback", "hold", "rejectVendor", "rejectReceipt", "cancel", "cancelBalance",
                 "holdInv", "returnInv", "holdPay"}
 FINAL = {"Closed", "Stock Issued", "Rejected", "Cancelled"}
@@ -82,7 +84,7 @@ ACTION_LABEL = {
     "track": "Delivery update", "cancelBalance": "Balance cancelled", "receive": "Received & inspected",
     "rejectReceipt": "Delivery rejected — supplier return / replacement", "issueClose": "Issued to site & indent closed",
     "cancel": "Cancelled", "verifyInv": "Invoice verified", "holdInv": "Invoice on hold", "returnInv": "Invoice returned",
-    "pay": "Payment settled — purchase closed", "holdPay": "Payment on hold",
+    "authorizePay": "Payment authorised", "pay": "Payment settled — purchase closed", "holdPay": "Payment on hold",
 }
 
 # Order in which the action forms show the fields.
@@ -98,7 +100,8 @@ BUTTON_LABEL = {
     "rejectVendor": "Reject supplier selection", "po": "Issue PO", "track": "Update delivery",
     "cancelBalance": "Cancel the balance", "receive": "Receive material", "rejectReceipt": "Reject delivery",
     "issueClose": "Issue to site & close", "cancel": "Cancel indent", "verifyInv": "Invoice verified",
-    "holdInv": "Hold invoice", "returnInv": "Return invoice", "pay": "Record payment & close", "holdPay": "Hold payment",
+    "holdInv": "Hold invoice", "returnInv": "Return invoice", "authorizePay": "Authorise payment",
+    "pay": "Record settlement & close", "holdPay": "Hold payment",
 }
 
 # Fields each step may fill in together with its action (model field names).
@@ -115,6 +118,9 @@ STAGE_FIELDS = {
     "payment": {"paid_on", "pay_mode", "pay_ref", "pay_amount"},
 }
 RECEIVE_FIELDS = {"grn_no", "inspection"}
+# actions that only take a remark (no step data)
+REMARK_ONLY = {"reject", "sendback", "hold", "resume", "cancel", "rejectVendor", "purchase", "cancelBalance",
+               "holdInv", "returnInv", "holdPay"}
 REQUEST_FIELDS = {"site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
 
 # Default steps for the built-in roles.
@@ -122,14 +128,20 @@ DEFAULT_ROLE_STAGES = {
     "admin": [s.key for s in STAGES],
     "pm": ["tech"],
     "qs": [],
-    "engineer": ["receive"],
+    "engineer": ["receive", "issue"],
     "purchase": ["rfq", "po", "track", "invoice"],
-    "management": ["mgmt", "vendor", "payment"],
+    "management": ["mgmt", "vendor", "payauth"],
     "supervisor": [],
     "store": ["stock", "avail", "receive", "issue"],
     "accounts": ["invoice", "payment"],
     "safety": [],
     "viewer": [],
+}
+
+
+# Default limits inside a step: Purchase coordinates the invoice step but only the Accountant verifies it.
+DEFAULT_STEP_ACTIONS = {
+    "purchase": {"invoice": ["holdInv", "returnInv"]},
 }
 
 
@@ -248,6 +260,22 @@ def acts_at(who: dict, stage: str) -> bool:
     return bool(who) and (who.get("admin") or stage in (who.get("stages") or []))
 
 
+def step_allows(who: dict, stage: str, action: str) -> bool:
+    """A role can be limited to some of a step's actions (e.g. Purchase may only hold or return an invoice)."""
+    if who.get("admin"):
+        return True
+    lim = (who.get("limits") or {}).get(stage)
+    return lim is None or action in lim
+
+
+def payment_authoriser(i: dict):
+    """Who authorised the payment (the last authorisation in the history), if anyone."""
+    for h in reversed(i.get("history") or []):
+        if h.get("action") == "authorizePay":
+            return h.get("by")
+    return None
+
+
 def has_approval(i: dict) -> bool:
     return any(h.get("action") not in NON_APPROVAL for h in i.get("history") or [])
 
@@ -273,9 +301,9 @@ def allowed_actions(i: dict, who: dict, cfg: Config) -> list[str]:
                 add("resume", "reject")
         else:
             if acts_at(who, stage):
-                add(*STAGE[stage].actions)
+                add(*[a for a in STAGE[stage].actions if step_allows(who, stage, a)])
             if stage == "track" and acts_at(who, "receive"):
-                add("receive", "rejectReceipt")
+                add(*[a for a in ("receive", "rejectReceipt") if step_allows(who, "receive", a)])
             if stage == "issue" and is_requester(i, who):
                 add("issueClose")
             if not has_approval(i) and stage == first_stage(i, cfg) and is_requester(i, who):
@@ -283,8 +311,18 @@ def allowed_actions(i: dict, who: dict, cfg: Config) -> list[str]:
             if who.get("admin") and stage in BEFORE_PO:
                 add("cancel")
     if purchase_open(i) and acts_at(who, i["pstage"]) and i["pstage"] in STAGE:
-        add(*STAGE[i["pstage"]].actions)
+        add(*[a for a in STAGE[i["pstage"]].actions if step_allows(who, i["pstage"], a)])
+    # separation of duties: whoever authorised the payment can't also settle it — administrator included
+    if "pay" in out and payment_authoriser(i) is not None and payment_authoriser(i) == who.get("id"):
+        out.remove("pay")
     return out
+
+
+def is_override(i: dict, who: dict, action: str, cfg: "Config") -> bool:
+    """True when only the administrator's override power allows this action."""
+    if not who.get("admin"):
+        return False
+    return action not in allowed_actions(i, {**who, "admin": False}, cfg)
 
 
 def can_edit_request(i: dict, who: dict, cfg: Config) -> bool:
@@ -369,6 +407,9 @@ def transition(i: dict, action: str, entry: dict, cfg: Config) -> dict:
     if action == "verifyInv":
         n = next_purchase(cfg, "invoice")
         return pok("Purchase Closed" if n == "closed" else "Invoice Verified", n)
+    if action == "authorizePay":
+        n = next_purchase(cfg, "payauth")
+        return pok("Purchase Closed" if n == "closed" else "Payment Authorised", n)
     if action == "holdInv":
         return pok("Invoice On Hold", i.get("pstage"))
     if action == "returnInv":
@@ -382,6 +423,10 @@ def transition(i: dict, action: str, entry: dict, cfg: Config) -> dict:
 
 def fields_for_action(i: dict, action: str) -> set[str]:
     """Which data fields a person may fill in together with this action."""
+    if action in REMARK_ONLY:
+        return set()
+    if action in ("receive", "rejectReceipt"):
+        return set(RECEIVE_FIELDS)
     lane_stage = i.get("pstage") if action in PURCHASE_ACTIONS else i.get("stage")
     allowed = set(STAGE_FIELDS.get(lane_stage, set()))
     if action in ("receive", "rejectReceipt"):
@@ -428,9 +473,15 @@ def plan(i: dict, action: str, entry: dict, data: dict, who: dict, cfg: Config) 
         at = i.get("pstage") if action in PURCHASE_ACTIONS else i.get("stage")
         step = STAGE[at].short if at in STAGE else (at or "—")
         raise WorkflowError(f"Your role can’t do “{ACTION_LABEL.get(action, action)}” at the {step} step.")
+    override = is_override(i, who, action, cfg)
+    if override and not str(entry.get("remarks") or "").strip():
+        raise WorkflowError("You’re acting as administrator outside your own role — write the reason in Remarks. "
+                            "It is recorded as an override.")
     merged = {**i, **data}
     check_inputs(merged, action, entry, merged)
-    return transition(merged, action, entry, cfg)
+    t = transition(merged, action, entry, cfg)
+    t["override"] = override
+    return t
 
 
 def waiting_with(i: dict) -> str:

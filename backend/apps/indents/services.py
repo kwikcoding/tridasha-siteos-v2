@@ -126,7 +126,14 @@ def perform_action(indent_id: int, user, action: str, entry: dict, data: dict) -
         grn_no=clean.get("grn_no", ""), inspection=clean.get("inspection", ""),
         changes={k: str(v) if not isinstance(v, (list, dict, int, float, bool, type(None))) else v
                  for k, v in clean.items()},
+        override=bool(t.get("override")),
     )
+    if ev.override:
+        from apps.audit.log import record
+        record("indent.override", actor=user, target=indent,
+               summary=f"Administrator override on {indent.number}: {wf.ACTION_LABEL.get(action, action)} at "
+                       f"{wf.STAGE[at_stage].short if at_stage in wf.STAGE else at_stage}",
+               changes={"action": action, "step": at_stage, "remarks": ev.remarks})
     _after_commit(indent, ev)
     return indent
 

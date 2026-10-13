@@ -101,7 +101,7 @@ function StockEntryForm({ site, onDone }: { site: Site; onDone: () => void }) {
 }
 
 function StockTab() {
-  const { can } = useAuth();
+  const { has } = useAuth();
   const qc = useQueryClient();
   const sites = useSites();
   const [siteId, setSiteId] = useState<number | null>(null);
@@ -127,8 +127,8 @@ function StockTab() {
         </div>
         <input className="input max-w-xs" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <div className="flex-1" />
-        {siteId && <a className="btn-ghost" href={view === "balances" ? `/api/stock/balances/?site=${siteId}&format_xlsx=1` : `/api/stock/export/?site=${siteId}`}>Download Excel</a>}
-        {can("materials", "edit") && site && <button className="btn-gold" onClick={() => setAdding(true)}>+ Stock entry</button>}
+        {siteId && has("materials.export") && <a className="btn-ghost" href={view === "balances" ? `/api/stock/balances/?site=${siteId}&format_xlsx=1` : `/api/stock/export/?site=${siteId}`}>Download Excel</a>}
+        {has("materials.stock") && site && <button className="btn-gold" onClick={() => setAdding(true)}>+ Stock entry</button>}
       </div>
       {sites.data?.length === 0 && <div className="card p-8 text-center text-slate-500">No sites yet — the administrator adds them under Team &amp; roles.</div>}
       {view === "balances" && bal.data && (
@@ -216,7 +216,7 @@ function MaterialForm({ m, onDone }: { m: Material | null; onDone: () => void })
 }
 
 function CatalogueTab() {
-  const { can } = useAuth();
+  const { can, has } = useAuth();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
@@ -243,8 +243,8 @@ function CatalogueTab() {
           {cats.data?.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.count})</option>)}
         </select>
         <div className="flex-1" />
-        <a className="btn-ghost" href={`/api/materials/export/?${qs}`}>Download Excel</a>
-        {ed && <button className="btn-ghost" onClick={() => setImporting(true)}>Upload Excel / CSV</button>}
+        {has("materials.export") && <a className="btn-ghost" href={`/api/materials/export/?${qs}`}>Download Excel</a>}
+        {has("materials.import") && <button className="btn-ghost" onClick={() => setImporting(true)}>Upload Excel / CSV</button>}
         {ed && <button className="btn-gold" onClick={() => setEdit("new")}>+ Add material</button>}
       </div>
       <div className="card overflow-x-auto">
@@ -333,7 +333,7 @@ function RegisterForm({ r, onDone }: { r: RegisterItem | null; onDone: () => voi
 }
 
 function RegisterTab() {
-  const { can } = useAuth();
+  const { can, has } = useAuth();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [trade, setTrade] = useState("");
@@ -372,8 +372,8 @@ function RegisterTab() {
           <option value="">Any status</option>{REG_STATUS.map((s) => <option key={s}>{s}</option>)}
         </select>
         <div className="flex-1" />
-        <a className="btn-ghost" href={`/api/register/export/?${qs}`}>Download Excel</a>
-        {ed && <button className="btn-ghost" onClick={() => setImporting(true)}>Upload Excel / CSV</button>}
+        {has("materials.export") && <a className="btn-ghost" href={`/api/register/export/?${qs}`}>Download Excel</a>}
+        {has("materials.import") && <button className="btn-ghost" onClick={() => setImporting(true)}>Upload Excel / CSV</button>}
         {ed && <button className="btn-gold" onClick={() => setEdit("new")}>+ Add row</button>}
       </div>
       <div className="card overflow-x-auto">

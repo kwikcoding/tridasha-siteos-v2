@@ -18,5 +18,5 @@ class SiteViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.request.method in permissions.SAFE_METHODS:
-            return [permissions.IsAuthenticated()]
+            return [permissions.IsAuthenticated()]   # everyone needs their own site list
         return [permissions.IsAuthenticated(), IsAdmin()]

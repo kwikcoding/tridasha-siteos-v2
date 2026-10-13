@@ -17,7 +17,7 @@ const TABS = [
 ];
 
 export default function Indents() {
-  const { can } = useAuth();
+  const { has } = useAuth();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "queue";
@@ -35,8 +35,8 @@ export default function Indents() {
         <h1 className="text-xl font-semibold text-navy">Indents</h1>
         <div className="flex-1" />
         <input className="input max-w-xs" placeholder="Search number, item, PO, supplier…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <a className="btn-ghost" href={`/api/indents/export/?${qs}`}>Download Excel</a>
-        {can("indents", "edit") && <Link to="/indents/new" className="btn-gold">+ Raise indent</Link>}
+        {has("indents.export") && <a className="btn-ghost" href={`/api/indents/export/?${qs}`}>Download Excel</a>}
+        {has("indents.create") && <Link to="/indents/new" className="btn-gold">+ Raise indent</Link>}
       </div>
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">

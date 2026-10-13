@@ -117,7 +117,7 @@ class Indent(models.Model):
             d[f] = float(v) if isinstance(v, Decimal) else v
         d["raised_by"] = self.raised_by_id
         if history is None:
-            history = [{"action": a} for a in self.history.values_list("action", flat=True)]
+            history = [{"action": a, "by": b} for a, b in self.history.values_list("action", "by_id")]
         d["history"] = history
         return d
 
@@ -140,6 +140,7 @@ class IndentEvent(models.Model):
     grn_no = models.CharField(max_length=50, blank=True)
     inspection = models.TextField(blank=True)
     changes = models.JSONField(default=dict, blank=True)    # data fields filled in with this action
+    override = models.BooleanField(default=False)           # administrator acted outside their own role
 
     class Meta:
         ordering = ["at", "id"]

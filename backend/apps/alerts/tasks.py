@@ -114,7 +114,7 @@ def pending_digest():
     cutoff = timezone.now() - timedelta(hours=24)
     open_qs = Indent.objects.exclude(Q(status__in=list(wf.FINAL)) & Q(pstage__in=["", "closed"])) \
         .prefetch_related("history")
-    open_list = [(i, i.as_engine_dict([{"action": e.action} for e in i.history.all()])) for i in open_qs]
+    open_list = [(i, i.as_engine_dict([{"action": e.action, "by": e.by_id} for e in i.history.all()])) for i in open_qs]
     today = timezone.localdate()
     for u in User.objects.filter(is_active=True).select_related("role"):
         if u.is_admin:

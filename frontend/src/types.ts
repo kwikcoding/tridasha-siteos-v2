@@ -4,9 +4,11 @@ export interface Role {
   label: string;
   description: string;
   color: string;
+  permissions: string[];
   view: string[];
   edit: string[];
   stages: string[];
+  step_actions: Record<string, string[]>;
   can_approve: boolean;
   all_sites: boolean;
   builtin: boolean;
@@ -16,30 +18,84 @@ export interface Role {
 
 export interface Me {
   id: number;
+  employee_id: string | null;
   mobile: string;
   name: string;
   email: string;
+  designation: string;
+  department_name: string;
+  manager_name: string;
   role: Role | null;
+  roles: { key: string; label: string }[];
   is_admin: boolean;
   sites: number[];
+  permissions: string[];
   modules_view: string[];
   modules_edit: string[];
+  stages: string[];
+  must_change_password: boolean;
+  last_login: string | null;
 }
 
 export interface User {
   id: number;
+  employee_id: string | null;
   mobile: string;
   name: string;
   email: string;
+  designation: string;
+  department: number | null;
+  department_name: string;
+  reporting_manager: number | null;
+  manager_name: string;
   role: number | null;
   role_key: string;
   role_label: string;
+  extra_roles: number[];
+  all_role_labels: string[];
   sites: number[];
   is_active: boolean;
+  must_change_password: boolean;
   alert_whatsapp: boolean;
   alert_email: boolean;
   alert_sms: boolean;
+  date_joined: string;
   last_login: string | null;
+}
+
+export interface Department {
+  id: number;
+  name: string;
+  code: string;
+  head: number | null;
+  head_name: string;
+  active: boolean;
+  staff_count: number;
+}
+
+export interface PermCatalogue {
+  modules: { group: string; modules: { key: string; label: string; perms: { code: string; verb: string; label: string; admin_only: boolean }[] }[] }[];
+  steps: { key: string; n: string; short: string; dept: string; lane: string; actions: string[] }[];
+}
+
+export interface Pending {
+  indents: number;
+  purchases: number;
+  low_stock: number;
+  total: number;
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor: number | null;
+  actor_name: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  summary: string;
+  changes: Record<string, unknown>;
+  ip: string | null;
 }
 
 export interface Site {
@@ -102,6 +158,7 @@ export interface IndentEvent {
   qty_to: string | null;
   grn_no: string;
   inspection: string;
+  override: boolean;
 }
 
 export interface Step {
