@@ -1,8 +1,12 @@
-# Manual helper: generates Django migration files and uploads them as an artifact
-# (useful when you can't run Django locally). Actions → "Make migrations" → Run workflow.
+# Manual helper: generates Django migration files and pushes them to the branch `auto/migrations`
+# (useful when you can't run Django locally). Actions → "Make migrations" → Run workflow,
+# then merge that branch.
 name: Make migrations
 
 on: workflow_dispatch
+
+permissions:
+  contents: write
 
 jobs:
   makemigrations:
@@ -13,7 +17,7 @@ jobs:
     env:
       DJANGO_DEBUG: "1"
       DJANGO_SECRET_KEY: ci-only
-      DATABASE_URL: sqlite:///tmp/x.db
+      DATABASE_URL: sqlite:////tmp/x.db
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,7 +25,12 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: python manage.py makemigrations sites accounts indents alerts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: migrations
-          path: backend/apps/*/migrations/0*.py
+      - name: Push to auto/migrations
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B auto/migrations
+          git add apps/*/migrations/
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Add generated migrations"
+          git push -f origin auto/migrations
