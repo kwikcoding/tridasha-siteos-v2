@@ -27,6 +27,17 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - **Materials → Stock**: per-site balances and the full ledger. Entries are never edited or deleted — corrections are adjustments with a reason. Stock can't go below zero.
 - **Indents ↔ stock**: pick a catalogue item when raising an indent. Store sees the site balance at the stock check; *issue from stock* posts OUT (and is blocked if stock is short), *receive* posts IN with the GRN, *issue & close* posts OUT to site.
 
+## Phase 3 — access control
+
+- **Team & Roles** (admin): People (employee ID, designation, department, reporting manager, main + extra roles, sites, alerts, reset password), Roles (workflow steps and, per step, which actions), **Permission matrix** (roles × module permissions: view / create / edit / approve / export / upload / post stock …), Departments, Sites, **Audit log**.
+- Permissions are checked by Django on every request; the menu only hides what the server would refuse anyway.
+- New logins and admin password resets use a temporary password — the person must set their own at first sign-in.
+- **Step 12 is split**: 12a *Authorise payment* (Management) → 12b *Settle payment* (Accountant). Whoever authorised a payment can't also settle it — administrator included.
+- **Step 11**: only the Accountant verifies the invoice; Purchase can hold or return it. **Step 10**: Store Keeper or Site Engineer can issue & close.
+- **Administrator overrides**: the admin can act at any step, but must give a reason; it's flagged in the indent history and in the audit log.
+- Audit log covers sign-ins (and failed attempts), logins created/changed, password resets, role and permission changes, overrides, stock entries, uploads and workflow settings.
+- Sidebar, Dashboard (pending approvals and counts), Profile (change password), Access denied, Settings (workflow steps & management limit).
+
 Next phases: take-off, DPR, labour, expenses, dashboard, then data migration from v1.
 
 ## Run it locally (Docker — easiest)
