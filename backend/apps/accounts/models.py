@@ -138,7 +138,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def stage_keys(self) -> list:
-        return sorted({s for r in self.all_roles() for s in (r.stages or [])})
+        """Steps from the person's working roles. The Administrator role's reach comes from `is_admin`
+        instead, so that anything the admin does outside their own roles is recognised as an override."""
+        return sorted({s for r in self.all_roles() if r.key != "admin" for s in (r.stages or [])})
 
     def step_action_limits(self) -> dict:
         """{stage: set(actions)} only for stages where EVERY role granting it limits the actions."""
@@ -146,7 +148,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         for st in self.stage_keys:
             allowed, unlimited = set(), False
             for r in self.all_roles():
-                if st not in (r.stages or []):
+                if r.key == "admin" or st not in (r.stages or []):
                     continue
                 lim = (r.step_actions or {}).get(st)
                 if lim is None:

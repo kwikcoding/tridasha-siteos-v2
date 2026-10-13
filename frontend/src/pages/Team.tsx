@@ -7,7 +7,7 @@ import { Modal } from "../components/ImportModal";
 import { dateTimeFmt } from "../components/ui";
 import type { AuditEntry, Department, Page, PermCatalogue, Role, Site, User } from "../types";
 
-const err = (e: unknown) => e && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(e as Error).message}</p>;
+const err = (e: unknown) => (e ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(e as Error).message}</p> : null);
 
 function useTeamData() {
   const users = useQuery({ queryKey: ["users"], queryFn: () => get<Page<User>>("/users/?page_size=500") });
