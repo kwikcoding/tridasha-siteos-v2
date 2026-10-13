@@ -79,7 +79,10 @@ class IndentDetailSerializer(IndentListSerializer):
         """Tracker: every step that applies to this indent, with done / current / todo."""
         i = self._engine(obj)
         _, cfg = self._ctx()
-        acted = {e.stage for e in obj.history.all()}
+        events = list(obj.history.all())
+        acted = {e.stage for e in events}
+        if any(e.action == "receive" for e in events):
+            acted.add("receive")   # receipts are recorded while the indent sits at the delivery step
         out = [{"key": "raise", "n": "01", "label": "Raise indent", "state": "done"}]
         for s in wf.stages_for(i, cfg):
             if s.lane == "purchase":

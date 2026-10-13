@@ -99,6 +99,7 @@ class IndentFlowAPI(TestCase):
         d = self.act(self.mgmt, iid, "pay", data={"paid_on": "2026-10-25", "pay_mode": "NEFT"})
         self.assertEqual((d["pstage"], d["pstatus"]), ("closed", "Purchase Closed"))
 
+        self.assertTrue(all(st["state"] == "done" for st in d["steps"]), d["steps"])
         actions = [h["action"] for h in d["history"]]
         self.assertEqual(actions, ["raise", "approve", "approve", "approve", "issue", "approve", "approve", "po",
                                    "receive", "issueClose", "verifyInv", "pay"])

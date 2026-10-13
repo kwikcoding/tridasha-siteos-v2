@@ -115,6 +115,9 @@ STAGE_FIELDS = {
     "payment": {"paid_on", "pay_mode", "pay_ref", "pay_amount"},
 }
 RECEIVE_FIELDS = {"grn_no", "inspection"}
+# actions that only take a remark (no step data)
+REMARK_ONLY = {"reject", "sendback", "hold", "resume", "cancel", "rejectVendor", "purchase", "cancelBalance",
+               "holdInv", "returnInv", "holdPay"}
 REQUEST_FIELDS = {"site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
 
 # Default steps for the built-in roles.
@@ -382,6 +385,10 @@ def transition(i: dict, action: str, entry: dict, cfg: Config) -> dict:
 
 def fields_for_action(i: dict, action: str) -> set[str]:
     """Which data fields a person may fill in together with this action."""
+    if action in REMARK_ONLY:
+        return set()
+    if action in ("receive", "rejectReceipt"):
+        return set(RECEIVE_FIELDS)
     lane_stage = i.get("pstage") if action in PURCHASE_ACTIONS else i.get("stage")
     allowed = set(STAGE_FIELDS.get(lane_stage, set()))
     if action in ("receive", "rejectReceipt"):

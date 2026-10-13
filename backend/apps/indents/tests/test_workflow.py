@@ -104,6 +104,15 @@ class Permissions(unittest.TestCase):
             wf.plan(i, "approve", {"qty_to": 500}, {}, PM, cfg)
 
 
+class ActionFields(unittest.TestCase):
+    def test_only_progress_actions_take_step_data(self):
+        i = {"stage": "vendor", "pstage": ""}
+        self.assertIn("vendor_final", wf.fields_for_action(i, "approve"))
+        for a in ("hold", "cancel", "rejectVendor"):
+            self.assertEqual(wf.fields_for_action(i, a), set())
+        self.assertEqual(wf.fields_for_action({"stage": "track"}, "receive"), {"grn_no", "inspection"})
+
+
 class Settings(unittest.TestCase):
     def test_mgmt_limit_skips_small_indents(self):
         cfg = wf.config({"mgmt_limit": 100000})
