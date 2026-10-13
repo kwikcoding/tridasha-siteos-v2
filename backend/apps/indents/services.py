@@ -1,7 +1,7 @@
 """The only place indents change status. Views call these; nothing else writes workflow fields."""
 from decimal import Decimal
 
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -20,6 +20,12 @@ class ActionDataSerializer(serializers.ModelSerializer):
         model = Indent
         fields = DATA_FIELDS + ["grn_no", "inspection"]
         extra_kwargs = {f: {"required": False} for f in DATA_FIELDS}
+
+    def validate(self, attrs):
+        for k in ("inv_amount", "inv_gst", "pay_auth_amount", "pay_amount", "rate", "po_rate", "est_rate"):
+            if attrs.get(k) is not None and attrs[k] < 0:
+                raise serializers.ValidationError({k: "Can’t be negative."})
+        return attrs
 
     def validate_quotes(self, value):
         if not isinstance(value, list) or len(value) > 10:
@@ -54,7 +60,16 @@ def raise_indent(user, validated: dict) -> Indent:
              "raised_by": user.pk, "history": [{"action": "raise"}]}
     indent = Indent(**validated, raised_by=user, number=next_number(validated["site"]),
                     status="Requested", stage=wf.first_stage(probe, cfg), stage_entered_at=timezone.now())
-    indent.save()
+    for attempt in range(5):          # two people raising at the same moment can draw the same number
+        try:
+            with transaction.atomic():
+                indent.save()
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise
+            indent.pk = None
+            indent.number = next_number(validated["site"])
     ev = IndentEvent.objects.create(indent=indent, action="raise", stage="raise", to_status=indent.status,
                                     to_stage=indent.stage, by=user)
     _after_commit(indent, ev)
@@ -86,6 +101,10 @@ def perform_action(indent_id: int, user, action: str, entry: dict, data: dict) -
             except (TypeError, ValueError):
                 raise wf.WorkflowError("Quantity must be a number.")
 
+    if action == "pay" and clean.get("pay_ref") and IndentEvent.objects.filter(
+            indent=indent, action="pay", changes__pay_ref=clean["pay_ref"]).exists():
+        raise wf.WorkflowError(f"Payment reference {clean['pay_ref']} is already recorded on this indent — "
+                               "it looks like a duplicate payment.")
     t = wf.plan(current, action, entry, {k: _engine_value(v) for k, v in clean.items()}, who, cfg)
 
     lane = "purchase" if action in wf.PURCHASE_ACTIONS else "indent"

@@ -90,7 +90,7 @@ def pending(request):
     from apps.indents import workflow as wf
     from apps.indents.models import Indent, WorkflowSettings
     u = request.user
-    out = {"indents": 0, "purchases": 0, "low_stock": 0}
+    out = {"indents": 0, "purchases": 0, "low_stock": 0, "raised_open": 0}
     if u.can_view("indents"):
         cfg = WorkflowSettings.load().cfg()
         who = u.as_who()
@@ -104,6 +104,7 @@ def pending(request):
                 out["purchases"] += 1
             if any(a not in wf.PURCHASE_ACTIONS for a in acts):
                 out["indents"] += 1
+        out["raised_open"] = Indent.objects.filter(raised_by=u).exclude(status__in=list(wf.FINAL)).count()
     if u.can_view("materials"):
         from apps.materials.services import low_stock_count
         out["low_stock"] = low_stock_count(u)

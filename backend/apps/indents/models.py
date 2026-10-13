@@ -14,6 +14,7 @@ class WorkflowSettings(models.Model):
     stages = models.JSONField(default=dict, blank=True)          # {stage_key: {"on": bool}}
     mgmt_limit = models.DecimalField(max_digits=14, decimal_places=2, default=0)   # 0 = every indent
     mgmt_never = models.BooleanField(default=False)
+    inv_tolerance_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"))   # step 11 match
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -25,7 +26,8 @@ class WorkflowSettings(models.Model):
         return obj
 
     def cfg(self) -> wf.Config:
-        return wf.config({"stages": self.stages, "mgmt_limit": "never" if self.mgmt_never else float(self.mgmt_limit)})
+        return wf.config({"stages": self.stages, "mgmt_limit": "never" if self.mgmt_never else float(self.mgmt_limit),
+                          "inv_tolerance_pct": float(self.inv_tolerance_pct)})
 
 
 class Indent(models.Model):
@@ -92,6 +94,9 @@ class Indent(models.Model):
     inv_amount = models.DecimalField(**MONEY)
     inv_gst = models.DecimalField(**MONEY)
     inv_note = models.TextField(blank=True)
+    inv_expected = models.DecimalField(**MONEY)      # PO rate × GRN qty when the invoice was verified
+    pay_auth_amount = models.DecimalField(**MONEY)   # 12a: amount authorised
+    paid_total = models.DecimalField(**MONEY)        # 12b: sum of all payments recorded
     paid_on = models.DateField(null=True, blank=True)
     pay_mode = models.CharField(max_length=30, blank=True)
     pay_ref = models.CharField(max_length=80, blank=True)
@@ -108,7 +113,8 @@ class Indent(models.Model):
         return f"{self.number} {self.item}"
 
     ENGINE_FIELDS = ["status", "stage", "pstatus", "pstage", "qty", "approved_qty", "issued_qty", "purchase_qty",
-                     "received_qty", "held_from", "rate", "po_rate", "est_rate"]
+                     "received_qty", "held_from", "rate", "po_rate", "est_rate", "inv_amount", "inv_gst", "pay_auth_amount",
+                     "paid_total"]
 
     def as_engine_dict(self, history=None) -> dict:
         d = {}

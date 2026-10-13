@@ -30,13 +30,14 @@ const FIELD_META: Record<string, { label: string; type: FieldType }> = {
   issued_to: { label: "Issued to (team / location)", type: "text" },
   inv_no: { label: "Invoice number", type: "text" },
   inv_date: { label: "Invoice date", type: "date" },
-  inv_amount: { label: "Invoice amount (₹)", type: "number" },
+  inv_amount: { label: "Invoice amount before GST (₹)", type: "number" },
   inv_gst: { label: "GST (₹)", type: "number" },
   inv_note: { label: "Invoice note", type: "textarea" },
+  pay_auth_amount: { label: "Amount authorised (₹)", type: "number" },
   paid_on: { label: "Paid on", type: "date" },
   pay_mode: { label: "Payment mode", type: "text" },
   pay_ref: { label: "Payment reference / UTR", type: "text" },
-  pay_amount: { label: "Amount paid (₹)", type: "number" },
+  pay_amount: { label: "Amount paid now (₹)", type: "number" },
 };
 
 const BUTTON_TONE: Record<string, string> = {
@@ -61,8 +62,32 @@ function prefill(d: Detail, field: string): unknown {
   if (field === "po_vendor") return d.vendor_final || best?.vendor || "";
   if (field === "po_rate") return d.rate ?? best?.rate ?? "";
   if (field === "po_date" || field === "inv_date" || field === "paid_on") return new Date().toISOString().slice(0, 10);
-  if (field === "pay_amount") return d.inv_amount ?? "";
+  if (field === "pay_auth_amount") return d.money?.payable || "";
+  if (field === "pay_amount") return d.money?.outstanding || "";
   return "";
+}
+
+/** Steps 11–12: what the invoice is matched against and how much may still be paid. */
+function MoneyPanel({ d, action }: { d: Detail; action: string }) {
+  const m = d.money;
+  if (!m) return null;
+  return (
+    <div className="grid gap-2 rounded-lg bg-white px-3 py-2 text-sm sm:grid-cols-3">
+      <div><div className="label">PO rate × received</div>{m.expected > 0 ? money(m.expected) : <span className="text-amber-700">no PO rate / GRN</span>}</div>
+      {action === "verifyInv" ? (
+        <div className="sm:col-span-2 text-xs text-slate-600">An invoice (before GST) more than {m.tolerance_pct}% away from this needs a reason in Remarks.</div>
+      ) : (
+        <>
+          <div><div className="label">Invoice incl. GST</div>{money(m.invoice_total) || "—"}</div>
+          {action === "pay" ? (
+            <div><div className="label">Authorised · paid · left</div>{money(m.authorised ?? m.payable)} · {money(m.paid)} · <b>{money(m.outstanding)}</b></div>
+          ) : (
+            <div><div className="label">Can authorise up to</div><b>{money(m.payable)}</b></div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function Tracker({ d }: { d: Detail }) {
@@ -161,6 +186,7 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
           </select>
         </div>
       )}
+      {["verifyInv", "authorizePay", "pay"].includes(action) && <MoneyPanel d={d} action={action} />}
       {fields.map((f) => {
         const m = FIELD_META[f] ?? { label: f, type: "text" as FieldType };
         const val = data[f];
@@ -255,8 +281,10 @@ export default function IndentDetail() {
             <Field label="Supplier">{d.po_vendor || d.vendor_final}</Field>
             <Field label="PO">{d.po_no && `${d.po_no} · ${money(d.po_rate)}`}</Field>
             <Field label="Expected delivery">{dateFmt(d.po_expected)}</Field>
-            <Field label="Invoice">{d.inv_no && `${d.inv_no} · ${money(d.inv_amount)}`}</Field>
-            <Field label="Paid on">{dateFmt(d.paid_on)}</Field>
+            <Field label="Invoice">{d.inv_no && `${d.inv_no} · ${money(d.money.invoice_total)} incl. GST`}</Field>
+            <Field label="Authorised">{d.pay_auth_amount && money(d.pay_auth_amount)}</Field>
+            <Field label="Paid">{d.paid_total && `${money(d.paid_total)}${d.money.outstanding > 0 ? ` · ${money(d.money.outstanding)} to pay` : ""}`}</Field>
+            <Field label="Last paid on">{dateFmt(d.paid_on)}</Field>
             <Field label="Estimated rate">{money(d.est_rate)}</Field>
             <div className="sm:col-span-3"><Field label="Purpose">{d.purpose}</Field></div>
             {d.stock_entries?.length > 0 && (
@@ -303,6 +331,11 @@ export default function IndentDetail() {
                 {h.qty && <div className="text-xs">Qty {qtyFmt(h.qty)}</div>}
                 {h.qty_to && <div className="text-xs">Approved {qtyFmt(h.qty_to)}</div>}
                 {h.grn_no && <div className="text-xs">GRN {h.grn_no}</div>}
+                {["verifyInv", "authorizePay", "pay"].includes(h.action) && (() => {
+                  const c = (h.changes ?? {}) as Record<string, unknown>;
+                  const amt = h.action === "verifyInv" ? c.inv_amount : h.action === "authorizePay" ? c.pay_auth_amount : c.pay_amount;
+                  return amt ? <div className="text-xs">{money(amt as string)}{h.action === "pay" && c.pay_ref ? ` · ${String(c.pay_ref)}` : ""}</div> : null;
+                })()}
                 {h.remarks && <div className="mt-1 rounded bg-slate-50 px-2 py-1 text-xs text-slate-700">{h.remarks}</div>}
               </li>
             ))}

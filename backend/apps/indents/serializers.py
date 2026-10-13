@@ -69,6 +69,7 @@ class IndentDetailSerializer(IndentListSerializer):
         return [{"id": e.id, "date": e.date, "kind": e.kind, "qty": e.qty, "ref": e.ref, "note": e.note}
                 for e in obj.stock_entries.all().order_by("date", "id")]
     steps = serializers.SerializerMethodField()
+    money = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     action_fields = serializers.SerializerMethodField()
 
@@ -98,6 +99,16 @@ class IndentDetailSerializer(IndentListSerializer):
             out.append({"key": s.key, "n": s.n, "label": s.label, "short": s.short, "dept": s.dept, "lane": s.lane,
                         "state": state})
         return out
+
+    def get_money(self, obj):
+        """Steps 11–12 at a glance: PO × GRN, invoice incl. GST, authorised, paid, still to pay."""
+        i = {**self._engine(obj)}
+        _, cfg = self._ctx()
+        exp, diff, ok = wf.invoice_variance(i, cfg)
+        return {"expected": exp, "invoice_total": wf.invoice_total(i), "variance": diff if i.get("inv_amount") else None,
+                "within_tolerance": ok, "tolerance_pct": cfg.inv_tolerance_pct, "payable": wf.payable(i),
+                "authorised": i.get("pay_auth_amount"), "paid": i.get("paid_total") or 0,
+                "outstanding": wf.outstanding(i, cfg)}
 
     def get_can_edit(self, obj):
         who, cfg = self._ctx()
@@ -140,6 +151,8 @@ class IndentCreateSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         if not user.all_sites and site.pk not in user.site_ids():
             raise serializers.ValidationError("You aren’t assigned to this site.")
+        if not site.active:
+            raise serializers.ValidationError("This site is closed — indents can’t be raised on it.")
         return site
 
 

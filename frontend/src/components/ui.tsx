@@ -22,6 +22,8 @@ const STATUS_TONE: Record<string, string> = {
   "Invoice Verified": "bg-sky-100 text-sky-800",
   "Invoice On Hold": "bg-slate-200 text-slate-700",
   "Invoice Returned": "bg-orange-100 text-orange-800",
+  "Payment Authorised": "bg-indigo-100 text-indigo-800",
+  "Part Paid": "bg-amber-100 text-amber-800",
   "Payment On Hold": "bg-slate-200 text-slate-700",
   "Purchase Closed": "bg-green-100 text-green-800",
 };

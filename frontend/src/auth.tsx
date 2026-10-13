@@ -36,13 +36,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: isLoading,
     login: async (mobile, password) => {
       const me = await post<Me>("/auth/login/", { mobile, password });
-      qc.clear();
+      // Update the watched "me" entry in place (clear() would detach it and the app would still look signed out),
+      // then drop everything cached for the previous person.
       qc.setQueryData(["me"], me);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
     },
     logout: async () => {
       await post("/auth/logout/");
-      qc.clear();
       qc.setQueryData(["me"], null);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
     },
     can: (module, mode = "view") => {
       if (!data) return false;

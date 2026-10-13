@@ -82,6 +82,7 @@ export interface Pending {
   indents: number;
   purchases: number;
   low_stock: number;
+  raised_open: number;
   total: number;
 }
 
@@ -158,6 +159,7 @@ export interface IndentEvent {
   qty_to: string | null;
   grn_no: string;
   inspection: string;
+  changes?: Record<string, unknown>;
   override: boolean;
 }
 
@@ -196,7 +198,15 @@ export interface IndentDetail extends IndentRow {
   issued_to: string;
   inv_no: string;
   inv_amount: string | null;
+  inv_gst: string | null;
+  inv_expected: string | null;
+  pay_auth_amount: string | null;
+  paid_total: string | null;
   paid_on: string | null;
+  money: {
+    expected: number; invoice_total: number; variance: number | null; within_tolerance: boolean; tolerance_pct: number;
+    payable: number; authorised: number | null; paid: number; outstanding: number;
+  };
   stock_note: string;
   spec_note: string;
   material: number | null;
@@ -214,7 +224,7 @@ export interface WorkflowMeta {
   action_labels: Record<string, string>;
   button_labels: Record<string, string>;
   needs_remark: string[];
-  settings: { stages: Record<string, { on: boolean }>; mgmt_limit: string; mgmt_never: boolean };
+  settings: { stages: Record<string, { on: boolean }>; mgmt_limit: string; mgmt_never: boolean; inv_tolerance_pct?: number };
 }
 
 export interface Notification {
