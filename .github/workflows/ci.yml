@@ -43,7 +43,22 @@ jobs:
           DJANGO_DEBUG: "0"
           DJANGO_SECRET_KEY: ci-only-but-long-enough-to-pass-the-deploy-check-1234567890
       - name: API tests
-        run: python manage.py test apps -v 2
+        shell: bash
+        run: python manage.py test apps -v 2 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+      - name: Report test failures as annotations
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          # one annotation per failing test, with its traceback (visible in the run summary and the API)
+          python - <<'PY'
+          import re
+          log = open("test.log").read()
+          blocks = re.split(r"\n={50,}\n", log)
+          for b in blocks[1:10]:
+              msg = b.strip().replace("%", "%25").replace("\r", "").replace("\n", "%0A")[:4000]
+              print(f"::error title=Test failure::{msg}")
+          PY
 
   frontend:
     runs-on: ubuntu-latest
