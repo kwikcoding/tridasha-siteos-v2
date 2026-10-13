@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/staticfiles/
+backend/media/
+# Node
+node_modules/
+frontend/dist/
+# Env & editors
+.env
+*.env.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
