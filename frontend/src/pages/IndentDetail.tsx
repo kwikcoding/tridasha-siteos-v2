@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { get, post } from "../api";
+import { useAuth } from "../auth";
 import { Field, PriorityChip, StatusChip, dateFmt, dateTimeFmt, money, qtyFmt } from "../components/ui";
 import type { IndentDetail as Detail, Quote, WorkflowMeta } from "../types";
 
@@ -101,6 +102,7 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
   const stage = meta.stages.find((s) => s.key === d.stage);
   const fields = d.action_fields[action] ?? [];
   const needsRemark = meta.needs_remark.includes(action);
+  const isAdmin = !!useAuth().me?.is_admin;
   const [remarks, setRemarks] = useState("");
   const [qty, setQty] = useState("");
   const [qtyTo, setQtyTo] = useState("");
@@ -177,7 +179,7 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
         );
       })}
       <div>
-        <label className="label" htmlFor="f-remarks">Remarks{needsRemark ? " (required)" : ""}</label>
+        <label className="label" htmlFor="f-remarks">Remarks{needsRemark ? " (required)" : isAdmin ? " (required when acting for another role)" : ""}</label>
         <textarea id="f-remarks" className="input" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} required={needsRemark} />
       </div>
       {run.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(run.error as Error).message}</p>}
@@ -296,7 +298,7 @@ export default function IndentDetail() {
             {[...d.history].reverse().map((h) => (
               <li key={h.id} className="relative">
                 <span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-gold" />
-                <div className="text-sm font-medium">{h.label}</div>
+                <div className="text-sm font-medium">{h.label}{h.override && <span className="ml-1.5 chip bg-red-100 text-red-700">admin override</span>}</div>
                 <div className="text-xs text-slate-500">{h.by_name} · {dateTimeFmt(h.at)}</div>
                 {h.qty && <div className="text-xs">Qty {qtyFmt(h.qty)}</div>}
                 {h.qty_to && <div className="text-xs">Approved {qtyFmt(h.qty_to)}</div>}

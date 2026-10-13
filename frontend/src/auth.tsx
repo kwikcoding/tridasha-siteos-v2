@@ -9,6 +9,8 @@ interface AuthValue {
   login: (mobile: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   can: (module: string, mode?: "view" | "edit") => boolean;
+  has: (code: string) => boolean;
+  refresh: () => Promise<unknown>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -46,6 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!data) return false;
       return (mode === "edit" ? data.modules_edit : data.modules_view).includes(module);
     },
+    has: (code) => !!data && (data.is_admin || data.permissions.includes(code)),
+    refresh: () => qc.invalidateQueries({ queryKey: ["me"] }),
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

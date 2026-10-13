@@ -95,14 +95,16 @@ class IndentFlowAPI(TestCase):
         d = self.act(self.store, iid, "issueClose", data={"issued_to": "Tower A gang"})
         self.assertEqual((d["stage"], d["status"]), ("closed", "Closed"))
         d = self.act(self.accounts, iid, "verifyInv", data={"inv_no": "INV-9", "inv_amount": "19500"})
-        self.assertEqual(d["pstage"], "payment")
-        d = self.act(self.mgmt, iid, "pay", data={"paid_on": "2026-10-25", "pay_mode": "NEFT"})
+        self.assertEqual(d["pstage"], "payauth")
+        d = self.act(self.mgmt, iid, "authorizePay")
+        self.assertEqual((d["pstage"], d["pstatus"]), ("payment", "Payment Authorised"))
+        d = self.act(self.accounts, iid, "pay", data={"paid_on": "2026-10-25", "pay_mode": "NEFT"})
         self.assertEqual((d["pstage"], d["pstatus"]), ("closed", "Purchase Closed"))
 
         self.assertTrue(all(st["state"] == "done" for st in d["steps"]), d["steps"])
         actions = [h["action"] for h in d["history"]]
         self.assertEqual(actions, ["raise", "approve", "approve", "approve", "issue", "approve", "approve", "po",
-                                   "receive", "issueClose", "verifyInv", "pay"])
+                                   "receive", "issueClose", "verifyInv", "authorizePay", "pay"])
         self.assertEqual(d["history"][8]["grn_no"], "GRN-1")
 
     def test_wrong_role_is_refused(self):
@@ -166,7 +168,7 @@ class IndentFlowAPI(TestCase):
                                           format="json")
         self.assertEqual(r.status_code, 403)
         c = self.client_for(self.admin)
-        r = c.post("/api/roles/", {"key": "site-qa", "label": "Site QA", "view": ["indents"], "stages": ["receive"]},
+        r = c.post("/api/roles/", {"key": "site-qa", "label": "Site QA", "permissions": ["indents.view"], "stages": ["receive"]},
                    format="json")
         self.assertEqual(r.status_code, 201, r.content)
         role_id = r.json()["id"]
