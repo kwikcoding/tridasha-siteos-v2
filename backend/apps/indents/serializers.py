@@ -103,7 +103,9 @@ class IndentDetailSerializer(IndentListSerializer):
     def get_action_fields(self, obj):
         """For each allowed action, the extra fields the form should show."""
         i = self._engine(obj)
-        return {a: sorted(wf.fields_for_action(i, a) - wf.REQUEST_FIELDS) for a in self.get_allowed_actions(obj)}
+        order = {f: n for n, f in enumerate(wf.FIELD_ORDER)}
+        return {a: sorted(wf.fields_for_action(i, a) - wf.REQUEST_FIELDS, key=lambda f: order.get(f, 99))
+                for a in self.get_allowed_actions(obj)}
 
 
 class IndentCreateSerializer(serializers.ModelSerializer):

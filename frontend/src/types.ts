@@ -153,8 +153,9 @@ export interface IndentDetail extends IndentRow {
 }
 
 export interface WorkflowMeta {
-  stages: { n: string; key: string; lane: string; label: string; short: string; dept: string; actions: string[]; required: boolean; can_qty: boolean }[];
+  stages: { n: string; key: string; lane: string; label: string; short: string; dept: string; actions: string[]; approve_label: string; required: boolean; can_qty: boolean }[];
   action_labels: Record<string, string>;
+  button_labels: Record<string, string>;
   needs_remark: string[];
   settings: { stages: Record<string, { on: boolean }>; mgmt_limit: string; mgmt_never: boolean };
 }

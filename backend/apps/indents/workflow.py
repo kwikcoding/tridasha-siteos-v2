@@ -36,21 +36,22 @@ class Stage:
     pseudo: bool = False    # no pointer stops here (people act while the indent sits at another step)
     required: bool = False  # can't be switched off in settings
     can_qty: bool = False   # approver may reduce the quantity
+    approve_label: str = "Approve"
 
 
 STAGES: list[Stage] = [
     Stage("02", "stock", "indent", "Verify stock & open orders", "Stock & open orders", "Storekeeper",
-          ("approve", "sendback", "hold"), done="Under Verification"),
+          ("approve", "sendback", "hold"), done="Under Verification", approve_label="Verified — forward"),
     Stage("03", "tech", "indent", "Verify technical requirement", "Technical", "Project Head",
-          ("approve", "reject", "sendback", "hold"), done="Under Verification", can_qty=True),
+          ("approve", "reject", "sendback", "hold"), done="Under Verification", approve_label="Approve technically", can_qty=True),
     Stage("04", "mgmt", "indent", "Approve requirement & budget", "Requirement & budget", "Authorised approver / Management",
-          ("approve", "reject", "sendback", "hold"), done="Approved", can_qty=True),
+          ("approve", "reject", "sendback", "hold"), done="Approved", approve_label="Approve requirement & budget", can_qty=True),
     Stage("—", "avail", "indent", "Stock available? Issue from stores / purchase the balance", "Stock available?", "Storekeeper",
           ("issue", "purchase"), required=True),
     Stage("05", "rfq", "indent", "Obtain vendor quotations", "Quotations", "Purchase team",
-          ("approve", "hold", "reject"), done="RFQ"),
+          ("approve", "hold", "reject"), done="RFQ", approve_label="Submit quotations"),
     Stage("06", "vendor", "indent", "Compare & approve supplier", "Supplier approval", "Purchase team + Authorised approver",
-          ("approve", "rejectVendor", "hold"), done="Vendor Approved"),
+          ("approve", "rejectVendor", "hold"), done="Vendor Approved", approve_label="Approve supplier"),
     Stage("07", "po", "indent", "Issue purchase order", "Purchase order", "Purchase team",
           ("po", "hold"), done="PO Issued", required=True),
     Stage("08", "track", "indent", "Track material delivery", "Delivery", "Purchase team",
@@ -84,12 +85,27 @@ ACTION_LABEL = {
     "pay": "Payment settled — purchase closed", "holdPay": "Payment on hold",
 }
 
+# Order in which the action forms show the fields.
+FIELD_ORDER = ["stock_seen", "stock_note", "spec_note", "boq_ref", "budget_note", "quotes", "purchase_note",
+               "vendor_final", "rate", "lead_days", "vendor_note", "po_no", "po_date", "po_vendor", "po_rate", "po_expected",
+               "tracking", "grn_no", "inspection", "issued_to", "inv_no", "inv_date", "inv_amount", "inv_gst", "inv_note",
+               "paid_on", "pay_mode", "pay_ref", "pay_amount"]
+
+# What the buttons say (the history uses ACTION_LABEL, in the past tense).
+BUTTON_LABEL = {
+    "resubmit": "Resubmit", "approve": "Approve", "reject": "Reject", "sendback": "Send back", "hold": "Put on hold",
+    "resume": "Resume", "issue": "Issue from stock", "purchase": "Purchase all (none in stock)",
+    "rejectVendor": "Reject supplier selection", "po": "Issue PO", "track": "Update delivery",
+    "cancelBalance": "Cancel the balance", "receive": "Receive material", "rejectReceipt": "Reject delivery",
+    "issueClose": "Issue to site & close", "cancel": "Cancel indent", "verifyInv": "Invoice verified",
+    "holdInv": "Hold invoice", "returnInv": "Return invoice", "pay": "Record payment & close", "holdPay": "Hold payment",
+}
+
 # Fields each step may fill in together with its action (model field names).
 STAGE_FIELDS = {
     "stock": {"stock_note", "stock_seen"},
     "tech": {"spec_note"},
     "mgmt": {"boq_ref", "budget_note"},
-    "avail": {"stock_seen"},
     "rfq": {"quotes", "purchase_note"},
     "vendor": {"vendor_final", "rate", "lead_days", "vendor_note"},
     "po": {"po_no", "po_date", "po_vendor", "po_rate", "po_expected"},

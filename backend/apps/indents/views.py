@@ -148,9 +148,10 @@ def _meta_payload():
     cfg = WorkflowSettings.load()
     return {
         "stages": [{"n": s.n, "key": s.key, "lane": s.lane, "label": s.label, "short": s.short, "dept": s.dept,
-                    "actions": list(s.actions), "required": s.required, "pseudo": s.pseudo, "can_qty": s.can_qty}
+                    "actions": list(s.actions), "approve_label": s.approve_label, "required": s.required, "pseudo": s.pseudo, "can_qty": s.can_qty}
                    for s in wf.STAGES],
         "action_labels": wf.ACTION_LABEL,
+        "button_labels": wf.BUTTON_LABEL,
         "needs_remark": sorted(wf.NEEDS_REMARK),
         "settings": {"stages": cfg.stages, "mgmt_limit": cfg.mgmt_limit, "mgmt_never": cfg.mgmt_never},
     }

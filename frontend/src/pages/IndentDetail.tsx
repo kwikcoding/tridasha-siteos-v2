@@ -44,6 +44,26 @@ const BUTTON_TONE: Record<string, string> = {
   reject: "btn-danger", cancel: "btn-danger", rejectVendor: "btn-danger", rejectReceipt: "btn-danger", returnInv: "btn-danger",
 };
 
+function buttonLabel(meta: WorkflowMeta, d: Detail, action: string) {
+  if (action === "approve") return meta.stages.find((s) => s.key === d.stage)?.approve_label ?? "Approve";
+  return meta.button_labels?.[action] ?? meta.action_labels[action] ?? action;
+}
+
+/** Sensible starting values so people don't retype what the previous step already recorded. */
+function prefill(d: Detail, field: string): unknown {
+  const cur = d[field];
+  if (cur !== null && cur !== undefined && cur !== "") return cur;
+  const quotes = (d.quotes ?? []).filter((q) => q.vendor && q.rate !== undefined && q.rate !== "");
+  const best = quotes.sort((a, b) => Number(a.rate) - Number(b.rate))[0];
+  if (field === "vendor_final") return best?.vendor ?? "";
+  if (field === "rate") return best?.rate ?? "";
+  if (field === "po_vendor") return d.vendor_final || best?.vendor || "";
+  if (field === "po_rate") return d.rate ?? best?.rate ?? "";
+  if (field === "po_date" || field === "inv_date" || field === "paid_on") return new Date().toISOString().slice(0, 10);
+  if (field === "pay_amount") return d.inv_amount ?? "";
+  return "";
+}
+
 function Tracker({ d }: { d: Detail }) {
   return (
     <ol className="flex gap-1 overflow-x-auto pb-1">
@@ -86,7 +106,7 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
   const [qtyTo, setQtyTo] = useState("");
   const [to, setTo] = useState("requester");
   const [data, setData] = useState<Record<string, unknown>>(() =>
-    Object.fromEntries(fields.map((f) => [f, f === "quotes" ? (d.quotes ?? []) : (d[f] ?? "")])));
+    Object.fromEntries(fields.map((f) => [f, f === "quotes" ? (d.quotes ?? []) : prefill(d, f)])));
 
   const run = useMutation({
     mutationFn: () => {
@@ -117,17 +137,17 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
 
   return (
     <form onSubmit={submit} className="mt-4 space-y-4 rounded-xl border border-gold/40 bg-gold-50/40 p-4">
-      <div className="font-medium text-navy">{meta.action_labels[action] ?? action}</div>
+      <div className="font-medium text-navy">{buttonLabel(meta, d, action)}</div>
       {showQty && (
         <div>
-          <label className="label">{action === "issue" ? "Quantity issued from stock" : "Accepted quantity"} ({d.unit})</label>
-          <input className="input max-w-[200px]" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} required />
+          <label className="label" htmlFor="f-qty">{action === "issue" ? "Quantity issued from stock" : "Accepted quantity"} ({d.unit})</label>
+          <input id="f-qty" className="input max-w-[200px]" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} required />
         </div>
       )}
       {showQtyTo && (
         <div>
-          <label className="label">Approve a smaller quantity (optional, requested {qtyFmt(d.approved_qty ?? d.qty)})</label>
-          <input className="input max-w-[200px]" type="number" step="any" min="0" value={qtyTo} onChange={(e) => setQtyTo(e.target.value)} />
+          <label className="label" htmlFor="f-qtyto">Approve a smaller quantity (optional, requested {qtyFmt(d.approved_qty ?? d.qty)})</label>
+          <input id="f-qtyto" className="input max-w-[200px]" type="number" step="any" min="0" value={qtyTo} onChange={(e) => setQtyTo(e.target.value)} />
         </div>
       )}
       {action === "sendback" && (
@@ -144,21 +164,21 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
         const val = data[f];
         return (
           <div key={f}>
-            <label className="label">{m.label}</label>
+            <label className="label" htmlFor={`f-${f}`}>{m.label}</label>
             {m.type === "quotes" ? (
               <QuotesEditor value={(val as Quote[]) ?? []} onChange={(q) => setData({ ...data, quotes: q })} />
             ) : m.type === "textarea" ? (
-              <textarea className="input" rows={2} value={String(val ?? "")} onChange={(e) => setData({ ...data, [f]: e.target.value })} />
+              <textarea id={`f-${f}`} className="input" rows={2} value={String(val ?? "")} onChange={(e) => setData({ ...data, [f]: e.target.value })} />
             ) : (
-              <input className="input max-w-sm" type={m.type} step={m.type === "number" ? "any" : undefined} value={String(val ?? "")}
+              <input id={`f-${f}`} className="input max-w-sm" type={m.type} step={m.type === "number" ? "any" : undefined} value={String(val ?? "")}
                 onChange={(e) => setData({ ...data, [f]: e.target.value })} />
             )}
           </div>
         );
       })}
       <div>
-        <label className="label">Remarks{needsRemark ? " (required)" : ""}</label>
-        <textarea className="input" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} required={needsRemark} />
+        <label className="label" htmlFor="f-remarks">Remarks{needsRemark ? " (required)" : ""}</label>
+        <textarea id="f-remarks" className="input" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} required={needsRemark} />
       </div>
       {run.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(run.error as Error).message}</p>}
       <div className="flex gap-2">
@@ -213,7 +233,7 @@ export default function IndentDetail() {
               {!action && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {d.allowed_actions.map((a) => (
-                    <button key={a} className={BUTTON_TONE[a] ?? "btn-ghost"} onClick={() => setAction(a)}>{m.action_labels[a] ?? a}</button>
+                    <button key={a} className={BUTTON_TONE[a] ?? "btn-ghost"} onClick={() => setAction(a)}>{buttonLabel(m, d, a)}</button>
                   ))}
                 </div>
               )}
