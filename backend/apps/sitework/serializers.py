@@ -151,6 +151,8 @@ class WorkerSerializer(SiteProjectSerializer):
         model = Worker
         fields = ["id", "site", "site_name", "name", "worker_code", "trade", "contractor", "mobile", "daily_wage",
                   "ot_rate", "active", "created_by_name", "created_at"]
+        extra_kwargs = {"worker_code": {"required": False}}
+        validators = []          # the code is optional; uniqueness per site is checked in validate()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

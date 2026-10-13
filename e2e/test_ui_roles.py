@@ -13,13 +13,28 @@ PW = os.environ["E2E_PASSWORD"]
 MOBILE = {k: f"95000000{n:02d}" for n, k in enumerate(
     ["admin", "management", "pm", "purchase", "accounts", "qs", "safety", "engineer", "supervisor", "store"])}
 
-D, M, I, T, S = "Dashboard", "Materials & Stock", "Indents & Purchase", "Team & Roles", "Settings"
+LABEL = {"dashboard": "Dashboard", "reports": "Reports", "sites": "Sites & Projects", "tasks": "Tasks & Schedule",
+         "dpr": "Daily Progress", "labour": "Labour & Attendance", "materials": "Materials & Stock",
+         "indents": "Indents & Purchase", "equipment": "Plant & Equipment", "expenses": "Expenses & Bills",
+         "quality": "Quality & Safety", "docs": "Drawings & Documents", "team": "Team & Roles", "settings": "Settings"}
+PATH = {"reports": "/reports", "sites": "/sites", "tasks": "/tasks", "dpr": "/dpr", "labour": "/labour",
+        "materials": "/materials", "indents": "/indents", "equipment": "/equipment", "expenses": "/expenses",
+        "quality": "/quality", "docs": "/docs", "team": "/team", "settings": "/settings"}
+WORK = ["dashboard", "reports", "sites", "tasks", "dpr", "labour", "materials", "indents", "equipment", "expenses",
+        "quality", "docs"]
 # what each role should see — from the role table in backend/apps/accounts/roles.py
-EXPECT = {
-    "admin": ({D, M, I, T, S}, True), "management": ({D, M, I}, True), "pm": ({D, M, I}, True),
-    "purchase": ({D, M, I}, True), "accounts": ({D, M, I}, True), "qs": ({D, M, I}, False),
-    "safety": ({D}, False), "engineer": ({D, M, I}, True), "supervisor": ({D, M, I}, True), "store": ({D, M, I}, True),
+VIEW = {
+    "admin": WORK + ["team", "settings"], "management": WORK, "pm": WORK,
+    "purchase": ["dashboard", "reports", "sites", "materials", "indents", "expenses"],
+    "accounts": ["dashboard", "reports", "sites", "expenses", "labour", "materials", "indents"],
+    "qs": ["dashboard", "reports", "sites", "materials", "indents", "expenses"],
+    "safety": ["dashboard", "quality", "dpr", "labour", "docs"],
+    "engineer": ["dashboard", "reports", "sites", "tasks", "dpr", "labour", "materials", "indents", "equipment", "quality", "docs"],
+    "supervisor": ["dashboard", "tasks", "dpr", "labour", "materials", "indents", "equipment", "quality"],
+    "store": ["dashboard", "materials", "indents", "equipment", "dpr"],
 }
+CAN_RAISE = {"admin", "management", "pm", "purchase", "accounts", "engineer", "supervisor", "store"}
+EXPECT = {k: ({LABEL[m] for m in v}, k in CAN_RAISE) for k, v in VIEW.items()}
 DENIED = "You don’t have access to this page"
 
 
@@ -49,11 +64,11 @@ def test_role_sidebar_and_direct_urls(page: Page, role):
     nav, can_raise = EXPECT[role]
     sign_in(page, role)
     assert sidebar(page) == nav, (role, sidebar(page))
-    for path, label in [("/team", T), ("/settings", S), ("/materials", M), ("/indents", I)]:
+    for module, path in PATH.items():
         page.goto(BASE + path)
         page.wait_for_load_state("networkidle")
         denied = page.get_by_text(DENIED).is_visible()
-        assert denied == (label not in nav), (role, path, "denied" if denied else "shown")
+        assert denied == (module not in VIEW[role]), (role, path, "denied" if denied else "shown")
     page.goto(BASE + "/indents/new")
     page.wait_for_load_state("networkidle")
     assert page.get_by_text(DENIED).is_visible() == (not can_raise), (role, "/indents/new")
@@ -92,8 +107,38 @@ def test_raise_indent_and_stock_check_in_the_browser(page: Page):
 def test_phone_width_has_no_sideways_scroll(page: Page):
     page.set_viewport_size({"width": 390, "height": 844})
     sign_in(page, "admin")
-    for path in ["/", "/indents", "/materials", "/team", "/settings"]:
+    for path in ["/", *PATH.values()]:
         page.goto(BASE + path)
         page.wait_for_load_state("networkidle")
         sw, iw = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
         assert sw <= iw + 1, (path, sw, iw)
+
+
+def test_daily_report_written_submitted_and_approved_in_the_browser(page: Page):
+    sign_in(page, "engineer")
+    page.goto(BASE + "/dpr")
+    page.get_by_role("button", name="+ Today's report").click()
+    page.get_by_label("Site *").select_option(label="E2E Test Site")
+    page.get_by_label("Work done today").fill("E2E: plinth beam shuttering")
+    page.get_by_placeholder("Activity").first.fill("Shuttering")
+    page.get_by_placeholder("Qty").first.fill("85")
+    page.get_by_placeholder("Unit").first.fill("sqm")
+    page.get_by_role("button", name="Save draft").click()
+    expect(page.get_by_text("E2E: plinth beam shuttering").first).to_be_visible()
+    page.get_by_role("button", name="Submit for approval").click()
+    page.get_by_role("button", name="Confirm").click()
+    expect(page.locator("span.chip", has_text="Waiting approval").first).to_be_visible()
+    url = page.url
+    sign_out(page)
+
+    sign_in(page, "store")                      # store keeper can read reports but not approve
+    page.goto(url)
+    expect(page.get_by_text("E2E: plinth beam shuttering").first).to_be_visible()
+    assert not page.get_by_role("button", name="Approve", exact=True).is_visible()
+    sign_out(page)
+
+    sign_in(page, "pm")
+    page.goto(url)
+    page.get_by_role("button", name="Approve", exact=True).click()
+    page.get_by_role("button", name="Confirm").click()
+    expect(page.locator("span.chip", has_text="Approved").first).to_be_visible()

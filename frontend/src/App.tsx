@@ -9,7 +9,16 @@ import Indents from "./pages/Indents";
 import Login from "./pages/Login";
 import Materials from "./pages/Materials";
 import NewIndent from "./pages/NewIndent";
+import DailyProgress from "./pages/DailyProgress";
+import Documents from "./pages/Documents";
+import EquipmentPage from "./pages/Equipment";
+import Expenses from "./pages/Expenses";
+import Labour from "./pages/Labour";
 import Profile from "./pages/Profile";
+import Projects from "./pages/Projects";
+import Quality from "./pages/Quality";
+import Reports from "./pages/Reports";
+import Tasks from "./pages/Tasks";
 import Settings from "./pages/Settings";
 import Team from "./pages/Team";
 
@@ -35,6 +44,15 @@ export default function App() {
         <Route path="/indents/:id" element={<Protected module="indents"><IndentDetail /></Protected>} />
         <Route path="/materials" element={<Protected module="materials"><Materials /></Protected>} />
         <Route path="/team" element={<Protected module="team"><Team /></Protected>} />
+        <Route path="/reports" element={<Protected module="reports"><Reports /></Protected>} />
+        <Route path="/sites" element={<Protected module="sites"><Projects /></Protected>} />
+        <Route path="/tasks" element={<Protected module="tasks"><Tasks /></Protected>} />
+        <Route path="/dpr" element={<Protected module="dpr"><DailyProgress /></Protected>} />
+        <Route path="/labour" element={<Protected module="labour"><Labour /></Protected>} />
+        <Route path="/equipment" element={<Protected module="equipment"><EquipmentPage /></Protected>} />
+        <Route path="/expenses" element={<Protected module="expenses"><Expenses /></Protected>} />
+        <Route path="/quality" element={<Protected module="quality"><Quality /></Protected>} />
+        <Route path="/docs" element={<Protected module="docs"><Documents /></Protected>} />
         <Route path="/settings" element={<Protected admin><Settings /></Protected>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/denied" element={<AccessDenied />} />

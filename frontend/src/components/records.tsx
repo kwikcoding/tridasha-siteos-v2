@@ -174,6 +174,7 @@ export function RecordForm({ fields, initial, endpoint, id, onSaved, onCancel, s
     const o: Record<string, unknown> = {};
     for (const f of fields) o[f.name] = initial?.[f.name] ?? (f.type === "checkbox" ? false : "");
     if (!o.site && fields.some((f) => f.type === "site") && sites.data?.length === 1) o.site = sites.data[0].id;
+    if (o.site === undefined && initial?.site) o.site = initial.site;      // editing: site fixed, still drives the pickers
     return o;
   });
   const people = usePeople(v.site as number | undefined);
@@ -247,14 +248,14 @@ export function RecordForm({ fields, initial, endpoint, id, onSaved, onCancel, s
 }
 
 // ---------------------------------------------------------------- actions with a note / amount
-export function ActionButton({ label, url, tone = "btn-primary", fields = [], confirmText, onDone, disabled }: {
-  label: string; url: string; tone?: string; fields?: { name: string; label: string; type?: string; required?: boolean; initial?: string }[];
-  confirmText?: string; onDone: () => void; disabled?: boolean;
+export function ActionButton({ label, url, tone = "btn-primary", fields = [], confirmText, onDone, disabled, body }: {
+  label: string; url: string; tone?: string; fields?: { name: string; label: string; type?: string; required?: boolean; initial?: string; options?: { value: string; label: string }[] }[];
+  confirmText?: string; onDone: () => void; disabled?: boolean; body?: Record<string, unknown>;
 }) {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState<Record<string, string>>({});
   const run = useMutation({
-    mutationFn: () => post(url, Object.fromEntries(Object.entries(v).filter(([, x]) => x !== ""))),
+    mutationFn: () => post(url, { ...body, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== "")) }),
     onSuccess: () => { setOpen(false); setV({}); onDone(); },
   });
   if (!open) return <button className={tone} disabled={disabled} onClick={() => { setOpen(true); setV(Object.fromEntries(fields.map((f) => [f.name, f.initial ?? ""]))); }}>{label}</button>;
@@ -265,7 +266,9 @@ export function ActionButton({ label, url, tone = "btn-primary", fields = [], co
       {fields.map((f) => (
         <div key={f.name}>
           <label className="label" htmlFor={`act-${f.name}`}>{f.label}{f.required ? " *" : ""}</label>
-          {f.type === "textarea"
+          {f.options
+            ? <select id={`act-${f.name}`} className="input max-w-sm" value={v[f.name] ?? ""} onChange={(e) => setV({ ...v, [f.name]: e.target.value })} required={f.required}>{f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+            : f.type === "textarea"
             ? <textarea id={`act-${f.name}`} className="input" rows={2} value={v[f.name] ?? ""} onChange={(e) => setV({ ...v, [f.name]: e.target.value })} required={f.required} />
             : <input id={`act-${f.name}`} className="input max-w-sm" type={f.type ?? "text"} step="any" value={v[f.name] ?? ""} onChange={(e) => setV({ ...v, [f.name]: e.target.value })} required={f.required} />}
         </div>

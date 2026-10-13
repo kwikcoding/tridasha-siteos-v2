@@ -25,9 +25,9 @@ class ExpenseSerializer(SiteProjectSerializer):
         model = Expense
         fields = ["id", "site", "site_name", "project", "project_name", "indent", "indent_number", "date", "category",
                   "description", "payee", "bill_no", "amount", "gst", "total", "status", "editable", "submitted_at",
-                  "approved_amount", "approved_by_name", "approved_at", "review_note", "paid_total", "outstanding",
+                  "approved_amount", "approved_by", "approved_by_name", "approved_at", "review_note", "paid_total", "outstanding",
                   "payments", "created_by", "created_by_name", "created_at"]
-        read_only_fields = ["status", "submitted_at", "approved_amount", "approved_at", "review_note", "paid_total",
+        read_only_fields = ["status", "submitted_at", "approved_amount", "approved_by", "approved_at", "review_note", "paid_total",
                             "created_by"]
 
     def validate(self, attrs):

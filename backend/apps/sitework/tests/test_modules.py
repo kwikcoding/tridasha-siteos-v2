@@ -323,8 +323,10 @@ class ReportsTests(ModulesBase):
 
     def test_dashboard_counts(self):
         p = self.call("pm", "get", "/api/auth/pending/")
-        for k in ("tasks_mine", "tasks_overdue", "dpr_to_approve", "bills_to_approve", "observations_open"):
+        for k in ("tasks_mine", "tasks_overdue", "dpr_to_approve", "observations_open"):
             self.assertIn(k, p)
+        self.assertNotIn("bills_to_approve", p)                                   # Project Head doesn't approve bills
+        self.assertIn("bills_to_approve", self.call("management", "get", "/api/auth/pending/"))
         self.assertNotIn("bills_to_approve", self.call("safety", "get", "/api/auth/pending/"))
         people = self.call("store", "get", "/api/people/", {"site": self.site.pk})
         self.assertNotIn("Far Supervisor", [x["name"] for x in people])

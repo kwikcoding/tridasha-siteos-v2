@@ -84,6 +84,8 @@ export interface Pending {
   low_stock: number;
   raised_open: number;
   total: number;
+  tasks_mine?: number; tasks_overdue?: number; dpr_to_approve?: number; dpr_today?: number; present_today?: number;
+  bills_to_approve?: number; bills_to_pay?: number; observations_open?: number; observations_mine?: number; equipment_service_due?: number;
 }
 
 export interface AuditEntry {
