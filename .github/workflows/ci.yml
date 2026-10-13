@@ -35,7 +35,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - name: Workflow engine tests (no database)
-        run: python -m unittest apps.indents.tests.test_workflow -v
+        run: python -m unittest apps.indents.tests.test_workflow apps.materials.tests.test_importer -v
       - name: Migrations are up to date
         run: python manage.py makemigrations --check --dry-run
       - run: python manage.py check --deploy --fail-level ERROR

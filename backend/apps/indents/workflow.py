@@ -99,7 +99,7 @@ STAGE_FIELDS = {
     "payment": {"paid_on", "pay_mode", "pay_ref", "pay_amount"},
 }
 RECEIVE_FIELDS = {"grn_no", "inspection"}
-REQUEST_FIELDS = {"site", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
+REQUEST_FIELDS = {"site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"}
 
 # Default steps for the built-in roles.
 DEFAULT_ROLE_STAGES = {

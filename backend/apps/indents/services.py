@@ -8,7 +8,7 @@ from rest_framework import serializers
 from . import workflow as wf
 from .models import Indent, IndentEvent, WorkflowSettings
 
-DATA_FIELDS = sorted(set().union(*wf.STAGE_FIELDS.values()) | wf.REQUEST_FIELDS - {"site"})
+DATA_FIELDS = sorted(set().union(*wf.STAGE_FIELDS.values()) | wf.REQUEST_FIELDS - {"site", "material"})
 
 
 class ActionDataSerializer(serializers.ModelSerializer):
@@ -114,6 +114,7 @@ def perform_action(indent_id: int, user, action: str, entry: dict, data: dict) -
     if stage_changed:
         indent.stage_entered_at = now
     indent.save()
+    _post_stock(indent, action, entry, clean, user)
 
     ev = IndentEvent.objects.create(
         indent=indent, action=action, lane=lane, stage=at_stage, from_status=from_status,
@@ -144,6 +145,27 @@ def edit_request(indent_id: int, user, validated: dict) -> Indent:
                                changes={k: str(v) if not isinstance(v, (int, float, type(None))) else v
                                         for k, v in validated.items()})
     return indent
+
+
+def _post_stock(indent, action, entry, clean, user):
+    """Indents linked to a catalogue item move the site store's stock automatically:
+    issue from stock → OUT, receive (GRN) → IN, issue & close → OUT of what was received."""
+    if not indent.material_id or action not in ("issue", "receive", "issueClose"):
+        return
+    from apps.materials.services import StockError, post_entry
+    common = dict(site=indent.site, material=indent.material, by=user, indent=indent)
+    try:
+        if action == "issue":
+            post_entry(kind="OUT", qty=entry["qty"], source="indent-issue", ref=indent.number,
+                       party=indent.issued_to or indent.raised_by.name, note="Issued from stock", **common)
+        elif action == "receive":
+            post_entry(kind="IN", qty=entry["qty"], source="purchase", ref=clean.get("grn_no") or indent.po_no,
+                       rate=indent.po_rate or indent.rate, party=indent.po_vendor, note=clean.get("inspection", ""), **common)
+        elif action == "issueClose" and indent.received_qty:
+            post_entry(kind="OUT", qty=indent.received_qty, source="indent-issue", ref=indent.number,
+                       party=indent.issued_to or indent.raised_by.name, note="Issued to site on closing", **common)
+    except StockError as e:
+        raise wf.WorkflowError(str(e))   # rolls back the whole action
 
 
 def _after_commit(indent, ev):

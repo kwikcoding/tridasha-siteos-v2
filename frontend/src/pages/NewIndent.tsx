@@ -2,12 +2,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { get, post } from "../api";
-import type { IndentDetail, Site } from "../types";
+import type { IndentDetail, Material, Site } from "../types";
+import { MaterialPicker } from "./Materials";
 
 export default function NewIndent() {
   const nav = useNavigate();
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => get<Site[]>("/sites/") });
   const [f, setF] = useState({ site: "", item: "", item_code: "", unit: "", qty: "", need_by: "", priority: "normal", est_rate: "", purpose: "" });
+  const [mat, setMat] = useState<Material | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   const save = useMutation({
@@ -15,6 +17,7 @@ export default function NewIndent() {
       post<IndentDetail>("/indents/", {
         ...f,
         site: Number(f.site),
+        material: mat?.id ?? null,
         need_by: f.need_by || null,
         est_rate: f.est_rate || null,
       }),
@@ -42,10 +45,17 @@ export default function NewIndent() {
           {sites.data && activeSites.length === 0 && <p className="mt-1 text-xs text-red-600">You aren’t assigned to any site yet — ask the administrator.</p>}
         </div>
         <div className="sm:col-span-2">
-          <label className="label">Material</label>
-          <input className="input" value={f.item} onChange={set("item")} placeholder="e.g. OPC 53 grade cement" required />
+          <label className="label">Material from catalogue</label>
+          <MaterialPicker value={mat} siteId={f.site ? Number(f.site) : undefined}
+            onPick={(m) => { setMat(m); setF({ ...f, item: m?.name ?? "", unit: m?.unit ?? f.unit, est_rate: m?.std_rate ?? f.est_rate, item_code: m?.code ?? "" }); }} />
         </div>
-        <div><label className="label">Item code (optional)</label><input className="input" value={f.item_code} onChange={set("item_code")} /></div>
+        {!mat && (
+          <div className="sm:col-span-2">
+            <label className="label">…or type the material name (not in catalogue)</label>
+            <input className="input" value={f.item} onChange={set("item")} placeholder="e.g. Shuttering oil" required={!mat} />
+          </div>
+        )}
+        {!mat && <div><label className="label">Item code (optional)</label><input className="input" value={f.item_code} onChange={set("item_code")} /></div>}
         <div><label className="label">Unit</label><input className="input" value={f.unit} onChange={set("unit")} placeholder="bag, cum, kg, nos" /></div>
         <div><label className="label">Quantity</label><input className="input" type="number" step="any" min="0" value={f.qty} onChange={set("qty")} required /></div>
         <div><label className="label">Estimated rate (₹, optional)</label><input className="input" type="number" step="any" min="0" value={f.est_rate} onChange={set("est_rate")} /></div>

@@ -5,6 +5,7 @@ import Layout from "./components/Layout";
 import IndentDetail from "./pages/IndentDetail";
 import Indents from "./pages/Indents";
 import Login from "./pages/Login";
+import Materials from "./pages/Materials";
 import NewIndent from "./pages/NewIndent";
 import Team from "./pages/Team";
 
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/indents" element={<Protected module="indents"><Indents /></Protected>} />
         <Route path="/indents/new" element={<Protected module="indents"><NewIndent /></Protected>} />
         <Route path="/indents/:id" element={<Protected module="indents"><IndentDetail /></Protected>} />
+        <Route path="/materials" element={<Protected module="materials"><Materials /></Protected>} />
         <Route path="/team" element={<Protected admin><Team /></Protected>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

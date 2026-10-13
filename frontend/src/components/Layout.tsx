@@ -67,6 +67,7 @@ export default function Layout() {
           </Link>
           <nav className="flex flex-1 gap-1">
             {can("indents") && <NavLink to="/indents" className={link}>Indents</NavLink>}
+            {can("materials") && <NavLink to="/materials" className={link}>Materials</NavLink>}
             {me?.is_admin && <NavLink to="/team" className={link}>Team &amp; roles</NavLink>}
           </nav>
           <Bell />

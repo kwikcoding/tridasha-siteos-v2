@@ -57,3 +57,16 @@ export const get = <T,>(p: string) => api<T>(p);
 export const post = <T,>(p: string, body?: unknown) => api<T>(p, { method: "POST", body: body ?? {} });
 export const patch = <T,>(p: string, body: unknown) => api<T>(p, { method: "PATCH", body });
 export const del = (p: string) => api(p, { method: "DELETE" });
+
+export async function upload<T = unknown>(path: string, form: FormData): Promise<T> {
+  await ensureCsrf();
+  const res = await fetch("/api" + path, {
+    method: "POST",
+    headers: { Accept: "application/json", "X-CSRFToken": cookie("csrftoken") },
+    credentials: "same-origin",
+    body: form,
+  });
+  const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  if (!res.ok) throw new ApiError(res.status, messageFrom(data, `Upload failed (${res.status})`), data);
+  return data as T;
+}

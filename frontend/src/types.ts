@@ -142,6 +142,9 @@ export interface IndentDetail extends IndentRow {
   paid_on: string | null;
   stock_note: string;
   spec_note: string;
+  material: number | null;
+  stock_at_site: string | null;
+  stock_entries: { id: number; date: string; kind: string; qty: string; ref: string; note: string }[];
   history: IndentEvent[];
   steps: Step[];
   can_edit: boolean;
@@ -164,4 +167,98 @@ export interface Notification {
   link: string;
   created_at: string;
   read_at: string | null;
+}
+
+export interface Material {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  spec: string;
+  hsn: string;
+  gst_rate: string | null;
+  std_rate: string | null;
+  reorder_level: string | null;
+  active: boolean;
+  balance?: string;
+}
+
+export interface RegisterItem {
+  id: number;
+  item_id: string;
+  trade: string;
+  system: string;
+  item: string;
+  unit: string;
+  spec: string;
+  applicability: string;
+  zone: string;
+  req_qty: string | null;
+  grade: string;
+  make: string;
+  vendor: string;
+  boq_ref: string;
+  status: string;
+  required_by: string | null;
+  remarks: string;
+  material: number | null;
+  material_code: string;
+  material_name: string;
+}
+
+export interface RegisterStats {
+  total: number;
+  applicability: Record<string, number>;
+  status: Record<string, number>;
+  trades: { name: string; count: number }[];
+  linked: number;
+}
+
+export interface StockEntry {
+  id: number;
+  site: number;
+  site_name: string;
+  material: number;
+  material_code: string;
+  material_name: string;
+  unit: string;
+  date: string;
+  kind: "IN" | "OUT" | "ADJ";
+  qty: string;
+  rate: string | null;
+  source: string;
+  indent: number | null;
+  indent_number: string;
+  ref: string;
+  party: string;
+  note: string;
+  by_name: string;
+}
+
+export interface StockBalance {
+  material: number;
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  balance: string;
+  received: string;
+  issued: string;
+  last_movement: string | null;
+  reorder_level: string | null;
+  low: boolean;
+}
+
+export interface ImportResult {
+  kind: string;
+  columns: Record<string, string>;
+  errors: { line: number; message: string }[];
+  error_count: number;
+  create: number;
+  update: number;
+  unchanged: number;
+  committed: boolean;
+  sample_new: string[];
+  sample_changed: { key: string; fields: string[] }[];
 }

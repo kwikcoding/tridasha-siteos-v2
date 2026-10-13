@@ -207,6 +207,9 @@ export default function IndentDetail() {
             <div className="card p-5">
               <div className="text-sm font-semibold text-navy">Your action</div>
               <p className="text-xs text-slate-500">{d.waiting_with && `Waiting with ${d.waiting_with}`}{d.purchase_with && ` · Purchase with ${d.purchase_with}`}</p>
+              {d.stock_at_site !== null && ["stock", "avail"].includes(d.stage) && (
+                <p className="mt-2 rounded-lg bg-navy-50 px-3 py-2 text-sm text-navy">Stock at {d.site_name}: <b>{qtyFmt(d.stock_at_site)} {d.unit}</b> · needed {qtyFmt(d.approved_qty ?? d.qty)} {d.unit}</p>
+              )}
               {!action && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {d.allowed_actions.map((a) => (
@@ -220,6 +223,8 @@ export default function IndentDetail() {
 
           <div className="card grid gap-4 p-5 sm:grid-cols-3">
             <Field label="Requested">{qtyFmt(d.qty)} {d.unit}</Field>
+            <Field label="Material code">{d.item_code}</Field>
+            <Field label={`In stock at ${d.site_name}`}>{d.stock_at_site !== null && `${qtyFmt(d.stock_at_site)} ${d.unit}`}</Field>
             <Field label="Approved">{d.approved_qty && `${qtyFmt(d.approved_qty)} ${d.unit}`}</Field>
             <Field label="Need by">{dateFmt(d.need_by)}</Field>
             <Field label="Issued from stock">{d.issued_qty && `${qtyFmt(d.issued_qty)} ${d.unit}`}</Field>
@@ -232,6 +237,21 @@ export default function IndentDetail() {
             <Field label="Paid on">{dateFmt(d.paid_on)}</Field>
             <Field label="Estimated rate">{money(d.est_rate)}</Field>
             <div className="sm:col-span-3"><Field label="Purpose">{d.purpose}</Field></div>
+            {d.stock_entries?.length > 0 && (
+              <div className="sm:col-span-3">
+                <div className="label">Stock movements from this indent</div>
+                <ul className="text-sm">
+                  {d.stock_entries.map((e) => (
+                    <li key={e.id} className="flex gap-3 border-t border-slate-100 py-1.5">
+                      <span className="w-24 text-slate-500">{dateFmt(e.date)}</span>
+                      <span className={`chip ${e.kind === "IN" ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}`}>{e.kind}</span>
+                      <span className="tabular-nums">{qtyFmt(e.qty)} {d.unit}</span>
+                      <span className="text-slate-500">{e.ref} {e.note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {d.quotes?.length > 0 && (
               <div className="sm:col-span-3">
                 <div className="label">Quotations</div>
