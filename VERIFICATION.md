@@ -1,5 +1,93 @@
 # Tridasha SiteOS v2 — functional & business-logic verification
 
+## Update — remaining modules built (13 Oct 2026, PR #7, branch `modules`)
+
+All 14 modules now exist in v2. Results come from CI on PostgreSQL 16 (throw-away databases); the last run passed all three jobs. Nothing was run against the live v1 site or the laptop database.
+
+| Suite | Tests | Result |
+|---|---|---|
+| Backend: engine, API, permissions and database (`manage.py test apps`, 9 files) | 98 | passed |
+| — of which new module tests (`apps/sitework/tests/test_modules.py`) | 14 | passed |
+| Browser (Playwright/Chromium): 10 roles × menu and 13 direct URLs; indent raise + stock check; daily report write → submit → approve across three roles; all pages at phone width | 13 | passed |
+| Frontend type-check and production build | — | passed |
+
+### What each new module does, and the rules tested
+
+- **Sites & Projects:** projects belong to a site, with a code unique per site, status, dates, budget and a project head.
+  - Indents, stock entries and every new module can carry a project. A project from another site, or a completed project, is refused.
+- **Tasks & Schedule:** assignee, priority, start and due dates, progress, and "can start after" dependencies (loops are refused).
+  - Only roles with `tasks.assign` can assign a task to someone else, and only to people on that site.
+  - The assignee can update progress without edit rights. Overdue = due date passed and not done.
+  - The assignee gets an in-app notification.
+- **Daily Progress:** one report per site (and project) per day, enforced in the database. No future dates.
+  - Draft → submitted → approved or returned (a returned report needs a note). Submitted reports are locked, and no one can approve their own.
+  - Includes quantities, manpower, materials used and site photos, a project-wise progress summary, and a cross-check against attendance for the day.
+- **Labour & Attendance:** muster roll with daily wage and overtime rate.
+  - A day is marked for many workers at once, one mark per worker per day, enforced in the database. Overtime only when present, at most 12 hours.
+  - Wage = day factor × daily wage + overtime. Once `labour.approve` approves a day, it's locked.
+  - Summary by day and by worker, with Excel export.
+- **Expenses & Bills:** the same bill from the same payee can't be entered twice.
+  - Submit → approve an amount (no more than the bill; not your own bill) → pay in parts. The total paid can't exceed the approved amount, a payment reference can't repeat on a bill, and whoever approved a bill can't pay it.
+  - Can link to an indent. Summary by category and department. Hidden from roles without `expenses.view`.
+- **Quality & Safety:** inspections, safety observations, incidents, NCRs and near misses, with auto reference numbers (NCR-2610-001).
+  - A responsible person, fix-by date and corrective action. Closing needs `quality.approve`, a closure note and the corrective action.
+  - NCRs, incidents and high or critical items also need an evidence file. Closed items are locked; reopening needs a reason.
+- **Drawings & Documents:** document number unique per site.
+  - Files are kept as revisions (R0, R1 …) and never replaced. A new "For construction" revision marks the previous one superseded.
+  - A document with files can only be archived, never deleted, and only by `docs.delete`. Downloads are permission-checked and audited.
+- **Plant & Equipment:** register (owned or hired).
+  - Allocation to a site or project, with one open allocation at a time (enforced in the database). Release.
+  - Maintenance, repair and breakdown log, with cost and downtime. Breakdown puts the item out of service. Next service date comes from the service interval.
+  - Utilisation report: days on site, %, downtime, hire cost.
+- **Reports:** period, site and project filters.
+  - Sections for indents and purchase money, expenses, daily progress, labour and wages, tasks, quality and safety, equipment and stock.
+  - Each section appears only if the role can see that module. Project-wise table (open indents, approved spend vs budget, reports, overdue tasks, open quality and safety items). By department for tasks and expenses.
+  - Excel export (`reports.export`, audited).
+- **Dashboard:** new count cards per role: my tasks, overdue tasks, reports to approve, workers present today, bills to approve or pay, open quality and safety items, equipment service due.
+
+**Shared, for every module:**
+- Site isolation: lists, details, files and exports only show the person's sites.
+- Server-side permission codes and audit log entries for create, change, submit, approve, pay, close, upload and download.
+- Excel export, and attachments that are served only through the API after the same permission check.
+- Escape closes pop-up windows.
+
+**Database:** new tables only, plus two nullable `project` columns, on indents and stock entries. No existing column is changed or dropped.
+
+### Final verification table (after PR #7)
+
+| Module | UI | Functions | Business Logic | API | Database | Permissions | Final Status |
+|---|---|---|---|---|---|---|---|
+| Dashboard | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (no date filter on the dashboard itself — that's in Reports) |
+| Reports | VERIFIED WORKING (loads, phone width) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (PDF export not built; Excel only) |
+| Sites & Projects | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Tasks & Schedule | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (no Gantt view) |
+| Daily Progress | VERIFIED WORKING (full flow in browser) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Labour & Attendance | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Materials & Stock | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (units still free text) |
+| Indents & Purchase | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (one invoice per indent) |
+| Plant & Equipment | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Expenses & Bills | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Quality & Safety | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Drawings & Documents | PARTIALLY TESTED (page and access in browser; flows via API) | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** |
+| Team & Roles | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **VERIFIED WORKING** (department-based data scoping not built) |
+| Settings | VERIFIED WORKING | PARTIALLY WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | VERIFIED WORKING | **PARTIALLY WORKING** (workflow settings only; no company profile settings) |
+
+"Partially tested" in the UI column: the page opens and the menu and access rules are checked in a real browser for all 10 roles. The module's actions (approve, pay, close, upload…) are tested through the API with each role, but not yet clicked through in the browser.
+
+### Still open
+
+- A click-through on the laptop after merging.
+- Browser tests for the remaining module flows.
+- Demo data for the new modules.
+- PDF export, a Gantt view for tasks, and a unit-of-measure master.
+- Department-based data scoping, and more than one invoice per indent.
+- The v1 data import (needs the v1 Google Sheets).
+- WhatsApp, SMS and email alert testing (needs provider accounts), and the production setup (needs your approval).
+
+---
+
+## Earlier pass — verification fixes (PR #6)
+
 **Date:** 13 Oct 2026 · **Branch:** `verify-p0-finance` (PR #6) · **Environment:** GitHub Actions on PostgreSQL 16 (throw-away CI databases). Nothing was run against the live v1 site or the laptop database.
 
 ## What was run

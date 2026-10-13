@@ -48,7 +48,14 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - **Fixed sign-in bounce** in the production build (the app could return to the login page after a successful sign-in).
 - Full results: [VERIFICATION.md](VERIFICATION.md).
 
-Next phases: take-off, DPR, labour, expenses, dashboard, then data migration from v1.
+## All modules (October 2026)
+
+Sites & Projects, Tasks & Schedule, Daily Progress, Labour & Attendance, Plant & Equipment, Expenses & Bills,
+Quality & Safety, Drawings & Documents and Reports are built, each with site isolation, server-side permissions,
+audit log, Excel export and attachments. Uploaded files are kept under `backend/media/` (not in git) and are
+downloaded only through the API. See [VERIFICATION.md](VERIFICATION.md) for what each module enforces and the test results.
+
+Next: v1 data import, demo data for the new modules, production setup.
 
 ## Run it locally (Docker — easiest)
 
