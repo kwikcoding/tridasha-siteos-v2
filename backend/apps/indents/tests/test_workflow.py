@@ -62,9 +62,9 @@ class FullPurchaseFlow(unittest.TestCase):
         # purchase lane continues independently
         i = act(i, ACCOUNTS, "verifyInv", cfg, data={"inv_no": "INV-9", "inv_amount": 19500})
         self.assertEqual((i["pstage"], i["pstatus"]), ("payauth", "Invoice Verified"))
-        i = act(i, MGMT, "authorizePay", cfg)
+        i = act(i, MGMT, "authorizePay", cfg, data={"pay_auth_amount": 19500})
         self.assertEqual((i["pstage"], i["pstatus"]), ("payment", "Payment Authorised"))
-        i = act(i, ACCOUNTS, "pay", cfg, data={"paid_on": "2026-10-20"})
+        i = act(i, ACCOUNTS, "pay", cfg, data={"paid_on": "2026-10-20", "pay_amount": 19500})
         self.assertEqual((i["pstage"], i["pstatus"]), ("closed", "Purchase Closed"))
 
     def test_fully_from_stock_closes(self):
@@ -128,16 +128,16 @@ class Controls(unittest.TestCase):
 
     def test_management_authorises_accountant_settles(self):
         cfg = wf.config()
-        i = act(at_invoice(cfg), ACCOUNTS, "verifyInv", cfg, data={"inv_no": "I", "inv_amount": 5})
+        i = act(at_invoice(cfg), ACCOUNTS, "verifyInv", cfg, data={"inv_no": "I", "inv_amount": 100})
         self.assertNotIn("pay", wf.allowed_actions(i, ACCOUNTS, cfg))       # not authorised yet
         self.assertNotIn("authorizePay", wf.allowed_actions(i, ACCOUNTS, cfg))
-        i = act(i, MGMT, "authorizePay", cfg)
+        i = act(i, MGMT, "authorizePay", cfg, data={"pay_auth_amount": 100})
         self.assertIn("pay", wf.allowed_actions(i, ACCOUNTS, cfg))
 
     def test_authoriser_cannot_settle_even_as_admin(self):
         cfg = wf.config()
-        i = act(at_invoice(cfg), ACCOUNTS, "verifyInv", cfg, data={"inv_no": "I", "inv_amount": 5})
-        i = act(i, ADMIN, "authorizePay", cfg, {"remarks": "Director away"})
+        i = act(at_invoice(cfg), ACCOUNTS, "verifyInv", cfg, data={"inv_no": "I", "inv_amount": 100})
+        i = act(i, ADMIN, "authorizePay", cfg, {"remarks": "Director away"}, data={"pay_auth_amount": 100})
         self.assertNotIn("pay", wf.allowed_actions(i, ADMIN, cfg))
         self.assertIn("pay", wf.allowed_actions(i, ACCOUNTS, cfg))
 
@@ -190,3 +190,89 @@ class Settings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def verified(cfg, amount=100, gst=18):
+    """At 12a: 100 received at rate 1 → PO × GRN = ₹100; invoice ₹100 + ₹18 GST."""
+    return act(at_invoice(cfg), ACCOUNTS, "verifyInv", cfg, data={"inv_no": "I", "inv_amount": amount, "inv_gst": gst})
+
+
+class MoneyControls(unittest.TestCase):
+    """Step 11 three-way match and step 12 authorised-amount / settlement controls."""
+
+    def test_invoice_matching_po_times_grn_passes_without_reason(self):
+        cfg = wf.config()
+        i = verified(cfg, amount=100.5)            # within the default 1 % tolerance
+        self.assertEqual((i["pstage"], i["inv_expected"]), ("payauth", 100.0))
+
+    def test_invoice_mismatch_needs_reason(self):
+        cfg = wf.config()
+        i = at_invoice(cfg)
+        with self.assertRaises(wf.WorkflowError) as e:
+            wf.plan(i, "verifyInv", {}, {"inv_no": "I", "inv_amount": 150}, ACCOUNTS, cfg)
+        self.assertIn("differs", str(e.exception))
+        t = wf.plan(i, "verifyInv", {"remarks": "Freight billed separately as agreed"},
+                    {"inv_no": "I", "inv_amount": 150}, ACCOUNTS, cfg)
+        self.assertEqual(t["pstage"], "payauth")
+
+    def test_tolerance_is_configurable(self):
+        cfg = wf.config({"inv_tolerance_pct": 10})
+        i = at_invoice(cfg)
+        wf.plan(i, "verifyInv", {}, {"inv_no": "I", "inv_amount": 109}, ACCOUNTS, cfg)       # inside 10 %
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "verifyInv", {}, {"inv_no": "I", "inv_amount": 111}, ACCOUNTS, cfg)
+
+    def test_negative_gst_refused(self):
+        cfg = wf.config()
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(at_invoice(cfg), "verifyInv", {}, {"inv_no": "I", "inv_amount": 100, "inv_gst": -5}, ACCOUNTS, cfg)
+
+    def test_authorise_needs_amount_and_cannot_exceed_invoice(self):
+        cfg = wf.config()
+        i = verified(cfg)
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "authorizePay", {}, {}, MGMT, cfg)
+        with self.assertRaises(wf.WorkflowError) as e:
+            wf.plan(i, "authorizePay", {}, {"pay_auth_amount": 118.01}, MGMT, cfg)
+        self.assertIn("118.00", str(e.exception))
+        i = act(i, MGMT, "authorizePay", cfg, data={"pay_auth_amount": 118})
+        self.assertEqual((i["pstage"], i["pay_auth_amount"]), ("payment", 118))
+
+    def test_part_payments_then_close(self):
+        cfg = wf.config()
+        i = act(verified(cfg), MGMT, "authorizePay", cfg, data={"pay_auth_amount": 118})
+        i = act(i, ACCOUNTS, "pay", cfg, data={"paid_on": "2026-10-20", "pay_amount": 50})
+        self.assertEqual((i["pstage"], i["pstatus"], i["paid_total"]), ("payment", "Part Paid", 50))
+        self.assertIn("pay", wf.allowed_actions(i, ACCOUNTS, cfg))
+        i = act(i, ACCOUNTS, "pay", cfg, data={"paid_on": "2026-10-21", "pay_amount": 68})
+        self.assertEqual((i["pstage"], i["pstatus"], i["paid_total"]), ("closed", "Purchase Closed", 118))
+
+    def test_excess_payment_refused(self):
+        cfg = wf.config()
+        i = act(verified(cfg), MGMT, "authorizePay", cfg, data={"pay_auth_amount": 100})
+        with self.assertRaises(wf.WorkflowError) as e:
+            wf.plan(i, "pay", {}, {"paid_on": "2026-10-20", "pay_amount": 100.01}, ACCOUNTS, cfg)
+        self.assertIn("excess", str(e.exception))
+        i = act(i, ACCOUNTS, "pay", cfg, data={"paid_on": "2026-10-20", "pay_amount": 60})
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "pay", {}, {"paid_on": "2026-10-20", "pay_amount": 41}, ACCOUNTS, cfg)
+
+    def test_payment_needs_amount_and_date(self):
+        cfg = wf.config()
+        i = act(verified(cfg), MGMT, "authorizePay", cfg, data={"pay_auth_amount": 100})
+        for data in ({"paid_on": "2026-10-20"}, {"pay_amount": 10}, {"paid_on": "2026-10-20", "pay_amount": 0}):
+            with self.assertRaises(wf.WorkflowError):
+                wf.plan(i, "pay", {}, data, ACCOUNTS, cfg)
+
+    def test_payment_step_off_closes_at_authorisation(self):
+        cfg = wf.config({"stages": {"payment": {"on": False}}})
+        i = act(verified(cfg), MGMT, "authorizePay", cfg, data={"pay_auth_amount": 118})
+        self.assertEqual((i["pstage"], i["pstatus"]), ("closed", "Purchase Closed"))
+
+    def test_invoice_step_off_authorises_against_po_times_grn(self):
+        cfg = wf.config({"stages": {"invoice": {"on": False}}})
+        i = at_invoice(cfg)
+        self.assertEqual(i["pstage"], "payauth")
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "authorizePay", {}, {"pay_auth_amount": 101}, MGMT, cfg)
+        act(i, MGMT, "authorizePay", cfg, data={"pay_auth_amount": 100})

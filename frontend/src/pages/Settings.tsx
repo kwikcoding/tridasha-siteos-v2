@@ -12,6 +12,7 @@ function WorkflowSettings() {
   const [stages, setStages] = useState<Record<string, boolean>>({});
   const [limit, setLimit] = useState("0");
   const [never, setNever] = useState(false);
+  const [tol, setTol] = useState("1");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -20,12 +21,13 @@ function WorkflowSettings() {
     setStages(Object.fromEntries(meta.data.stages.map((st) => [st.key, st.required || s.stages?.[st.key]?.on !== false])));
     setLimit(String(Number(s.mgmt_limit || 0)));
     setNever(!!s.mgmt_never);
+    setTol(String(s.inv_tolerance_pct ?? 1));
   }, [meta.data]);
 
   const save = useMutation({
     mutationFn: () => api("/workflow/settings/", {
       method: "PUT",
-      body: { stages: Object.fromEntries(Object.entries(stages).map(([k, on]) => [k, { on }])), mgmt_limit: limit || 0, mgmt_never: never },
+      body: { stages: Object.fromEntries(Object.entries(stages).map(([k, on]) => [k, { on }])), mgmt_limit: limit || 0, mgmt_never: never, inv_tolerance_pct: tol || 0 },
     }),
     onSuccess: () => { setSaved(true); qc.invalidateQueries({ queryKey: ["workflow"] }); },
   });
@@ -59,6 +61,13 @@ function WorkflowSettings() {
             <input id="lim" className="input max-w-xs" type="number" min="0" step="any" value={limit} onChange={(e) => setLimit(e.target.value)} />
           </div>
         )}
+      </section>
+      <section className="card space-y-3 p-6">
+        <h2 className="font-semibold text-navy">Step 11 — invoice matching</h2>
+        <div>
+          <label className="label" htmlFor="tol">Invoice (before GST) may differ from PO rate × received quantity by up to (%) without a written reason</label>
+          <input id="tol" className="input max-w-xs" type="number" min="0" max="25" step="any" value={tol} onChange={(e) => setTol(e.target.value)} />
+        </div>
       </section>
       {save.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(save.error as Error).message}</p>}
       {saved && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">Saved.</p>}

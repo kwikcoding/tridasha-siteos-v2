@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Prefetch, Q
 from django.http import HttpResponse
@@ -121,7 +122,8 @@ class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         ws.title = "Indents"
         cols = ["number", "site", "item", "unit", "qty", "approved_qty", "issued_qty", "purchase_qty", "received_qty",
                 "status", "stage", "pstatus", "need_by", "priority", "raised_by", "po_no", "po_vendor", "po_rate",
-                "po_expected", "inv_no", "inv_amount", "paid_on", "created_at", "closed_at"]
+                "po_expected", "inv_no", "inv_amount", "inv_gst", "inv_expected", "pay_auth_amount", "paid_total",
+                "paid_on", "created_at", "closed_at"]
         ws.append([c.replace("_", " ").title() for c in cols])
         for i in qs:
             row = []
@@ -154,7 +156,8 @@ def _meta_payload():
         "action_labels": wf.ACTION_LABEL,
         "button_labels": wf.BUTTON_LABEL,
         "needs_remark": sorted(wf.NEEDS_REMARK),
-        "settings": {"stages": cfg.stages, "mgmt_limit": cfg.mgmt_limit, "mgmt_never": cfg.mgmt_never},
+        "settings": {"stages": cfg.stages, "mgmt_limit": cfg.mgmt_limit, "mgmt_never": cfg.mgmt_never,
+                     "inv_tolerance_pct": float(cfg.inv_tolerance_pct)},
     }
 
 
@@ -169,7 +172,8 @@ def workflow_meta(request):
 def workflow_settings(request):
     from apps.audit.log import record
     obj = WorkflowSettings.load()
-    before = {"stages": obj.stages, "mgmt_limit": str(obj.mgmt_limit), "mgmt_never": obj.mgmt_never}
+    before = {"stages": obj.stages, "mgmt_limit": str(obj.mgmt_limit), "mgmt_never": obj.mgmt_never,
+              "inv_tolerance_pct": str(obj.inv_tolerance_pct)}
     stages = request.data.get("stages") or {}
     if not isinstance(stages, dict) or any(k not in wf.STAGE for k in stages):
         raise ValidationError({"stages": "Unknown step."})
@@ -180,8 +184,17 @@ def workflow_settings(request):
     except (TypeError, ValueError):
         raise ValidationError({"mgmt_limit": "Enter an amount."})
     obj.mgmt_never = bool(request.data.get("mgmt_never"))
+    if request.data.get("inv_tolerance_pct") not in (None, ""):
+        try:
+            tol = Decimal(str(request.data.get("inv_tolerance_pct")))
+        except (InvalidOperation, ValueError):
+            raise ValidationError({"inv_tolerance_pct": "Enter a percentage."})
+        if not (0 <= tol <= 25):
+            raise ValidationError({"inv_tolerance_pct": "Tolerance must be between 0 and 25%."})
+        obj.inv_tolerance_pct = tol
     obj.save()
     record("workflow.settings", actor=request.user, summary="Workflow settings changed", request=request,
            changes={"before": before, "after": {"stages": obj.stages, "mgmt_limit": str(obj.mgmt_limit),
-                                                "mgmt_never": obj.mgmt_never}})
+                                                "mgmt_never": obj.mgmt_never,
+                                                "inv_tolerance_pct": str(obj.inv_tolerance_pct)}})
     return Response(_meta_payload())

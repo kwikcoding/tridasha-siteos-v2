@@ -104,9 +104,9 @@ class AccessControl(TestCase):
         # 12a management authorises; accountant can't
         self.act("accounts", iid, "authorizePay", expect=400)
         self.act("accounts", iid, "pay", expect=400, data={"paid_on": "2026-10-20"})
-        self.act("management", iid, "authorizePay")
-        self.act("management", iid, "pay", expect=400, data={"paid_on": "2026-10-20"})   # 12b isn't theirs
-        d = self.act("accounts", iid, "pay", data={"paid_on": "2026-10-20"})
+        self.act("management", iid, "authorizePay", data={"pay_auth_amount": "4000"})
+        self.act("management", iid, "pay", expect=400, data={"paid_on": "2026-10-20", "pay_amount": "4000"})   # 12b isn't theirs
+        d = self.act("accounts", iid, "pay", data={"paid_on": "2026-10-20", "pay_amount": "4000"})
         self.assertEqual(d["pstatus"], "Purchase Closed")
 
     def test_supervisor_raises_qs_and_safety_cannot(self):
@@ -193,8 +193,8 @@ class AccessControl(TestCase):
                            ("purchase", "po", {"data": {"po_no": "P", "po_vendor": "V"}}),
                            ("store", "receive", {"qty": 10}), ("accounts", "verifyInv", {"data": {"inv_no": "I", "inv_amount": "10"}})]:
             self.act(who, iid, a, **kw)
-        self.act("admin", iid, "authorizePay", remarks="Director travelling")
-        r = self.act("admin", iid, "pay", expect=400, remarks="x", data={"paid_on": "2026-10-20"})
+        self.act("admin", iid, "authorizePay", remarks="Director travelling", data={"pay_auth_amount": "10"})
+        r = self.act("admin", iid, "pay", expect=400, remarks="x", data={"paid_on": "2026-10-20", "pay_amount": "10"})
         self.assertIn("can’t", r["detail"])
 
     # login history + forced password change after reset (real session, so the middleware runs)

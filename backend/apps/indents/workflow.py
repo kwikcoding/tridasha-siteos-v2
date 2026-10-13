@@ -11,7 +11,15 @@ Two connected lifecycles:
 
 An indent is a plain dict here (the model converts itself with `as_engine_dict()`):
   status, stage, pstatus, pstage, qty, approved_qty, issued_qty, purchase_qty,
-  received_qty, held_from, rate, po_rate, est_rate, raised_by (user id), history (list of {action})
+  received_qty, held_from, rate, po_rate, est_rate, inv_amount, inv_gst, pay_auth_amount, paid_total,
+  raised_by (user id), history (list of {action})
+
+Money controls (steps 11–12):
+  11  the invoice (before GST) is matched against PO rate × quantity received (GRN); a difference beyond
+      the tolerance needs a written reason and is recorded.
+  12a the authoriser records the amount authorised — never more than the verified invoice (incl. GST).
+  12b settlements can be partial; the total paid can never exceed the amount authorised. The purchase
+      closes when the authorised amount is fully paid.
 
 `who` is a dict: {"id": user id, "admin": bool, "stages": [stage keys the person's role acts on]}
 `cfg` comes from `config()`.
@@ -84,14 +92,14 @@ ACTION_LABEL = {
     "track": "Delivery update", "cancelBalance": "Balance cancelled", "receive": "Received & inspected",
     "rejectReceipt": "Delivery rejected — supplier return / replacement", "issueClose": "Issued to site & indent closed",
     "cancel": "Cancelled", "verifyInv": "Invoice verified", "holdInv": "Invoice on hold", "returnInv": "Invoice returned",
-    "authorizePay": "Payment authorised", "pay": "Payment settled — purchase closed", "holdPay": "Payment on hold",
+    "authorizePay": "Payment authorised", "pay": "Payment recorded", "holdPay": "Payment on hold",
 }
 
 # Order in which the action forms show the fields.
 FIELD_ORDER = ["stock_seen", "stock_note", "spec_note", "boq_ref", "budget_note", "quotes", "purchase_note",
                "vendor_final", "rate", "lead_days", "vendor_note", "po_no", "po_date", "po_vendor", "po_rate", "po_expected",
                "tracking", "grn_no", "inspection", "issued_to", "inv_no", "inv_date", "inv_amount", "inv_gst", "inv_note",
-               "paid_on", "pay_mode", "pay_ref", "pay_amount"]
+               "pay_auth_amount", "paid_on", "pay_mode", "pay_ref", "pay_amount"]
 
 # What the buttons say (the history uses ACTION_LABEL, in the past tense).
 BUTTON_LABEL = {
@@ -101,7 +109,7 @@ BUTTON_LABEL = {
     "cancelBalance": "Cancel the balance", "receive": "Receive material", "rejectReceipt": "Reject delivery",
     "issueClose": "Issue to site & close", "cancel": "Cancel indent", "verifyInv": "Invoice verified",
     "holdInv": "Hold invoice", "returnInv": "Return invoice", "authorizePay": "Authorise payment",
-    "pay": "Record settlement & close", "holdPay": "Hold payment",
+    "pay": "Record payment", "holdPay": "Hold payment",
 }
 
 # Fields each step may fill in together with its action (model field names).
@@ -115,6 +123,7 @@ STAGE_FIELDS = {
     "track": {"tracking", "po_expected"},
     "issue": {"issued_to"},
     "invoice": {"inv_no", "inv_date", "inv_amount", "inv_gst", "inv_note"},
+    "payauth": {"pay_auth_amount"},
     "payment": {"paid_on", "pay_mode", "pay_ref", "pay_amount"},
 }
 RECEIVE_FIELDS = {"grn_no", "inspection"}
@@ -187,12 +196,53 @@ def _r3(x: float) -> float:
     return round(x * 1000) / 1000
 
 
+def _r2(x: float) -> float:
+    return round(x * 100) / 100
+
+
+MONEY_EPS = 0.005
+
+
+def expected_invoice(i: dict) -> float:
+    """Step 11 three-way match basis: PO rate (or approved rate) × quantity received on GRNs, before GST."""
+    return _r2(_num(i.get("po_rate") or i.get("rate")) * _num(i.get("received_qty")))
+
+
+def invoice_total(i: dict) -> float:
+    return _r2(_num(i.get("inv_amount")) + _num(i.get("inv_gst")))
+
+
+def payable(i: dict) -> float:
+    """What may be authorised: the verified invoice incl. GST; without an invoice step, the PO × GRN value."""
+    return invoice_total(i) if _num(i.get("inv_amount")) > 0 else expected_invoice(i)
+
+
+def pay_limit(i: dict, cfg: "Config") -> float:
+    """The most that may be paid in total: the amount authorised at 12a (or what is payable if 12a never ran)."""
+    auth = _num(i.get("pay_auth_amount"))
+    return auth if auth > 0 else payable(i)
+
+
+def outstanding(i: dict, cfg: "Config") -> float:
+    return _r2(max(pay_limit(i, cfg) - _num(i.get("paid_total")), 0.0))
+
+
+def invoice_variance(i: dict, cfg: "Config") -> tuple[float, float, bool]:
+    """→ (expected, difference, within tolerance)."""
+    exp = expected_invoice(i)
+    diff = _r2(_num(i.get("inv_amount")) - exp)
+    if exp <= 0:
+        return exp, diff, False
+    return exp, diff, abs(diff) <= max(exp * cfg.inv_tolerance_pct / 100.0, 1.0) + MONEY_EPS
+
+
 # ---------------------------------------------------------------- configuration
 @dataclass
 class Config:
     on: dict = field(default_factory=dict)
     mgmt_limit: float = 0.0     # 0 = every indent goes to management
     mgmt_never: bool = False
+    inv_tolerance_pct: float = 1.0   # step 11: invoice may differ from PO × GRN by this much without a reason
 
 
 def config(doc: dict | None = None) -> Config:
@@ -203,7 +253,9 @@ def config(doc: dict | None = None) -> Config:
     raw = doc.get("mgmt_limit")
     never = raw == "never"
     lim = 0.0 if never or _blank(raw) else _num(raw)
-    return Config(on=on, mgmt_limit=max(lim, 0.0), mgmt_never=never)
+    tol = doc.get("inv_tolerance_pct")
+    tol = 1.0 if _blank(tol) else max(_num(tol), 0.0)
+    return Config(on=on, mgmt_limit=max(lim, 0.0), mgmt_never=never, inv_tolerance_pct=tol)
 
 
 def stage_on(i: dict, cfg: Config, s: Stage) -> bool:
@@ -406,16 +458,22 @@ def transition(i: dict, action: str, entry: dict, cfg: Config) -> dict:
         return ok("Closed", "closed")
     if action == "verifyInv":
         n = next_purchase(cfg, "invoice")
-        return pok("Purchase Closed" if n == "closed" else "Invoice Verified", n)
+        exp, diff, _ = invoice_variance(i, cfg)
+        return pok("Purchase Closed" if n == "closed" else "Invoice Verified", n,
+                   {"inv_expected": exp if exp > 0 else None})
     if action == "authorizePay":
         n = next_purchase(cfg, "payauth")
-        return pok("Purchase Closed" if n == "closed" else "Payment Authorised", n)
+        return pok("Purchase Closed" if n == "closed" else "Payment Authorised", n,
+                   {"pay_auth_amount": _num(i.get("pay_auth_amount"))})
     if action == "holdInv":
         return pok("Invoice On Hold", i.get("pstage"))
     if action == "returnInv":
         return pok("Invoice Returned", i.get("pstage"))
     if action == "pay":
-        return pok("Purchase Closed", "closed")
+        paid = _r2(_num(i.get("paid_total")) + _num(i.get("pay_amount")))
+        if paid + MONEY_EPS >= pay_limit(i, cfg):
+            return pok("Purchase Closed", "closed", {"paid_total": paid})
+        return pok("Part Paid", "payment", {"paid_total": paid})
     if action == "holdPay":
         return pok("Payment On Hold", i.get("pstage"))
     raise WorkflowError("Unknown action.")
@@ -436,8 +494,9 @@ def fields_for_action(i: dict, action: str) -> set[str]:
     return allowed
 
 
-def check_inputs(i: dict, action: str, entry: dict, data: dict) -> None:
+def check_inputs(i: dict, action: str, entry: dict, data: dict, cfg: "Config | None" = None) -> None:
     """Required inputs for particular actions. `data` = fields after merging what was sent."""
+    cfg = cfg or config()
     if action in NEEDS_REMARK and not str(entry.get("remarks") or "").strip():
         raise WorkflowError("Please write a remark for this action.")
     if action == "approve" and entry.get("qty_to") is not None:
@@ -456,10 +515,36 @@ def check_inputs(i: dict, action: str, entry: dict, data: dict) -> None:
         raise WorkflowError("Choose the supplier and rate being approved.")
     if action == "po" and not (data.get("po_no") and data.get("po_vendor")):
         raise WorkflowError("Enter the PO number and supplier.")
-    if action == "verifyInv" and not (data.get("inv_no") and _num(data.get("inv_amount")) > 0):
-        raise WorkflowError("Enter the invoice number and amount.")
-    if action == "pay" and not data.get("paid_on"):
-        raise WorkflowError("Enter the payment date.")
+    if action == "verifyInv":
+        if not (data.get("inv_no") and _num(data.get("inv_amount")) > 0):
+            raise WorkflowError("Enter the invoice number and amount.")
+        if _num(data.get("inv_gst")) < 0:
+            raise WorkflowError("GST can’t be negative.")
+        exp, diff, ok_ = invoice_variance(data, cfg)
+        if not ok_ and not str(entry.get("remarks") or "").strip():
+            if exp <= 0:
+                raise WorkflowError("There is no PO rate × received quantity to match this invoice against — "
+                                    "write the reason in Remarks to verify it anyway.")
+            raise WorkflowError(f"Invoice (before GST) differs from PO rate × received quantity (₹{exp:,.2f}) by "
+                                f"₹{diff:,.2f} — more than the {cfg.inv_tolerance_pct:g}% tolerance. Write the reason in "
+                                "Remarks to verify it anyway, or hold / return the invoice.")
+    if action == "authorizePay":
+        amt = _num(data.get("pay_auth_amount"))
+        cap = payable(data)
+        if amt <= 0:
+            raise WorkflowError("Enter the amount being authorised.")
+        if cap > 0 and amt > cap + MONEY_EPS:
+            raise WorkflowError(f"You can’t authorise more than the verified invoice (₹{cap:,.2f} incl. GST).")
+    if action == "pay":
+        if not data.get("paid_on"):
+            raise WorkflowError("Enter the payment date.")
+        amt = _num(data.get("pay_amount"))
+        if amt <= 0:
+            raise WorkflowError("Enter the amount paid.")
+        left = outstanding(data, cfg)
+        if amt > left + MONEY_EPS:
+            raise WorkflowError(f"That is more than the ₹{left:,.2f} still authorised for payment — "
+                                "excess payments aren’t allowed.")
 
 
 def plan(i: dict, action: str, entry: dict, data: dict, who: dict, cfg: Config) -> dict:
@@ -478,7 +563,7 @@ def plan(i: dict, action: str, entry: dict, data: dict, who: dict, cfg: Config) 
         raise WorkflowError("You’re acting as administrator outside your own role — write the reason in Remarks. "
                             "It is recorded as an override.")
     merged = {**i, **data}
-    check_inputs(merged, action, entry, merged)
+    check_inputs(merged, action, entry, merged, cfg)
     t = transition(merged, action, entry, cfg)
     t["override"] = override
     return t
