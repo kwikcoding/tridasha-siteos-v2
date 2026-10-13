@@ -276,3 +276,23 @@ class MoneyControls(unittest.TestCase):
         with self.assertRaises(wf.WorkflowError):
             wf.plan(i, "authorizePay", {}, {"pay_auth_amount": 101}, MGMT, cfg)
         act(i, MGMT, "authorizePay", cfg, data={"pay_auth_amount": 100})
+
+
+class Receipts(unittest.TestCase):
+    def test_cannot_receive_more_than_ordered(self):
+        cfg = wf.config()
+        i = new_indent(cfg)
+        for who in (STORE, PM, MGMT):
+            i = act(i, who, "approve", cfg)
+        i = act(i, STORE, "purchase", cfg)
+        i = act(i, PURCHASE, "approve", cfg, data={"quotes": [{"vendor": "V", "rate": 1}]})
+        i = act(i, MGMT, "approve", cfg, data={"vendor_final": "V", "rate": 1})
+        i = act(i, PURCHASE, "po", cfg, data={"po_no": "P", "po_vendor": "V"})
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "receive", {"qty": 101}, {}, STORE, cfg)
+        i = act(i, STORE, "receive", cfg, {"qty": 60})
+        with self.assertRaises(wf.WorkflowError) as e:
+            wf.plan(i, "receive", {"qty": 41}, {}, STORE, cfg)
+        self.assertIn("40", str(e.exception))
+        i = act(i, STORE, "receive", cfg, {"qty": 40})
+        self.assertEqual((i["status"], i["received_qty"]), ("Received", 100))

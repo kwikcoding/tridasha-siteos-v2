@@ -441,6 +441,10 @@ def transition(i: dict, action: str, entry: dict, cfg: Config) -> dict:
         if not q > 0:
             raise WorkflowError("Enter the accepted quantity.")
         got = _num(i.get("received_qty")) + q
+        left = _r3(to_buy(i) - _num(i.get("received_qty")))
+        if q > left + 1e-6:
+            raise WorkflowError(f"Only {left:g} is still to be received on this order — accept up to that, "
+                                "and reject or return the excess.")
         r = ok("Received", "issue", {"received_qty": got}) if got + EPS >= to_buy(i) \
             else ok("Partially Received", "track", {"received_qty": got})
         if not i.get("pstage"):
