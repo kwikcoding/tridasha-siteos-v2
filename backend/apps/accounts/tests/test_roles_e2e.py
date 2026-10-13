@@ -46,7 +46,7 @@ class RoleSignInMatrix(TestCase):
         self.assertEqual(r.status_code, 200, (key, r.content))
         return c
 
-    def probes(self):
+    def probes(self, key="anon"):
         """(label, method, url, body, permission(s) that allow it; None = admin only, "*" = everyone signed in)"""
         s, m = self.site.pk, self.cement.pk
         return [
@@ -58,14 +58,14 @@ class RoleSignInMatrix(TestCase):
             ("stock ledger", "get", "/api/stock/", None, "materials.view"),
             ("post stock", "post", "/api/stock/", {"site": s, "material": m, "kind": "IN", "qty": 5, "source": "manual"},
              "materials.stock"),
-            ("add material", "post", "/api/materials/", {"code": "X-1", "name": "X", "unit": "nos"}, "materials.create"),
+            ("add material", "post", "/api/materials/", {"code": f"X-{key}", "name": "X", "unit": "nos"}, "materials.create"),
             ("staff list", "get", "/api/users/", None, "team.view"),
             ("roles list", "get", "/api/roles/", None, "*"),             # labels for chips; editing is admin-only
-            ("create role", "post", "/api/roles/", {"key": "x", "label": "X"}, None),
+            ("create role", "post", "/api/roles/", {"key": f"x{key}", "label": "X"}, None),
             ("audit log", "get", "/api/audit/", None, None),
             ("workflow settings", "put", "/api/workflow/settings/", {"stages": {}, "mgmt_limit": 0}, None),
             ("v1 archive", "get", "/api/legacy/records/", None, None),
-            ("create site", "post", "/api/sites/", {"code": "NEW", "name": "New"}, None),
+            ("create site", "post", "/api/sites/", {"code": f"N-{key}"[:20], "name": "New"}, None),
         ]
 
     def test_each_role_signs_in_and_api_enforces_its_permissions(self):
@@ -80,7 +80,7 @@ class RoleSignInMatrix(TestCase):
                 self.assertEqual(set(me["permissions"]), expected_codes(key), key)
                 self.assertEqual(sorted(me["stages"]), sorted(BUILTIN_ROLES[key]["stages"]), key)
             self.assertEqual(c.get("/api/auth/pending/").status_code, 200)
-            for label, method, url, body, code in self.probes():
+            for label, method, url, body, code in self.probes(key):
                 codes = (code,) if isinstance(code, str) else (code or ())
                 allowed = key == "admin" or code == "*" or any(c_ in expected_codes(key) for c_ in codes)
                 r = getattr(c, method)(url, body, format="json") if body is not None else getattr(c, method)(url)

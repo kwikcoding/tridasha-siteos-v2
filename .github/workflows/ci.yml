@@ -73,3 +73,65 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+
+  e2e:
+    # real browser: production build of the React app + Django on a throw-away CI database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: siteos
+          POSTGRES_PASSWORD: siteos
+          POSTGRES_DB: siteos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U siteos" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: ci-only
+      DATABASE_URL: postgres://siteos:siteos@localhost:5432/siteos
+      CELERY_EAGER: "1"
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:4173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: |
+          pip install -r backend/requirements.txt pytest pytest-playwright
+          python -m playwright install --with-deps chromium
+          cd frontend && npm install --no-audit --no-fund && npm run build
+      - name: Start Django and the built app
+        shell: bash
+        run: |
+          echo "E2E_PASSWORD=$(python -c 'import secrets;print(secrets.token_urlsafe(18))')" >> "$GITHUB_ENV"
+          cd backend && python manage.py migrate --noinput
+      - name: Test logins (CI database only)
+        working-directory: backend
+        run: python manage.py shell < ../e2e/setup_users.py
+      - name: Serve
+        shell: bash
+        run: |
+          (cd backend && nohup python manage.py runserver 8000 > ../django.log 2>&1 &)
+          (cd frontend && nohup npx vite preview --port 4173 --strictPort > ../vite.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/api/health/ && break; sleep 1; done
+      - name: Browser tests
+        shell: bash
+        run: python -m pytest e2e -v --browser chromium 2>&1 | tee e2e.log; exit ${PIPESTATUS[0]}
+      - name: Report failures as annotations
+        if: failure()
+        shell: bash
+        run: |
+          for f in e2e.log django.log vite.log; do
+            [ -f $f ] || continue
+            python - "$f" <<'PY'
+          import sys
+          t = open(sys.argv[1]).read()[-6000:]
+          print("::error title=" + sys.argv[1] + "::" + t.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
+          done

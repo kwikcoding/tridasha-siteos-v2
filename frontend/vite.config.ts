@@ -8,4 +8,6 @@ const target = process.env.API_TARGET || "http://localhost:8000";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173, proxy: { "/api": { target, changeOrigin: false } } },
+  // `vite preview` serves the production build the same way (used by the browser tests in CI)
+  preview: { port: 4173, proxy: { "/api": { target, changeOrigin: false } } },
 });
