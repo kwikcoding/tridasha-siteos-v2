@@ -65,8 +65,8 @@ class StockEntry(models.Model):
     IN, OUT, ADJ = "IN", "OUT", "ADJ"
     KINDS = [(IN, "Received"), (OUT, "Issued"), (ADJ, "Adjustment")]
     SOURCES = [("opening", "Opening stock"), ("purchase", "Purchase receipt (GRN)"), ("indent-issue", "Issued against indent"),
-               ("transfer", "Transfer"), ("return", "Return to supplier"), ("adjust", "Stock count adjustment"),
-               ("manual", "Manual entry")]
+               ("transfer", "Transfer"), ("return", "Return to supplier"), ("site-return", "Returned to store from site"),
+               ("adjust", "Stock count adjustment"), ("manual", "Manual entry"), ("v1", "Imported from SiteOS v1")]
 
     site = models.ForeignKey("sites.Site", on_delete=models.PROTECT, related_name="stock_entries")
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name="stock_entries")
@@ -81,6 +81,7 @@ class StockEntry(models.Model):
     note = models.TextField(blank=True)
     by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
+    import_key = models.CharField(max_length=64, null=True, blank=True, unique=True)   # set for rows imported from v1
 
     class Meta:
         ordering = ["-date", "-id"]

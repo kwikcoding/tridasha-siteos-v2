@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 from apps.accounts import views as acc
 from apps.alerts.views import NotificationViewSet
 from apps.audit.views import AuditViewSet
+from apps.legacy import views as legacy
 from apps.indents import views as ind
 from apps.materials import views as mat
 from apps.sites.views import SiteViewSet
@@ -16,6 +17,7 @@ router.register("users", acc.UserViewSet, basename="user")
 router.register("roles", acc.RoleViewSet, basename="role")
 router.register("departments", acc.DepartmentViewSet, basename="department")
 router.register("audit", AuditViewSet, basename="audit")
+router.register("legacy/records", legacy.V1RecordViewSet, basename="v1record")
 router.register("sites", SiteViewSet, basename="site")
 router.register("indents", ind.IndentViewSet, basename="indent")
 router.register("materials", mat.MaterialViewSet, basename="material")
@@ -31,6 +33,8 @@ api = [
     path("auth/password/", acc.change_password),
     path("auth/pending/", acc.pending),
     path("permissions/", acc.permission_catalogue),
+    path("legacy/import/", legacy.import_v1),
+    path("legacy/demo/", legacy.demo_data),
     path("workflow/", ind.workflow_meta),
     path("workflow/settings/", ind.workflow_settings),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),

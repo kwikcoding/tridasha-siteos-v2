@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.indents",
     "apps.alerts",
     "apps.audit",
+    "apps.legacy",
 ]
 
 MIDDLEWARE = [
