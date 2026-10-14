@@ -347,3 +347,25 @@ def tiny_png() -> bytes:
     raw = b"".join(b"\x00" + b"\xb8\x89\x2b" * 2 for _ in range(2))
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+# ---------------------------------------------------------------- dashboard & materials
+def test_dashboard_cards_follow_role(page: Page):
+    sign_in(page, "management")
+    expect(page.get_by_text("Bills to approve")).to_be_visible()
+    expect(page.get_by_text("Open quality & safety items")).to_be_visible()
+    sign_out(page)
+    sign_in(page, "safety")
+    expect(page.get_by_text("Open quality & safety items")).to_be_visible()
+    expect(page.get_by_text("Bills to approve")).to_have_count(0)                      # no finance for safety
+
+
+def test_materials_catalogue_and_stock_export(page: Page):
+    sign_in(page, "store")
+    page.goto(BASE + "/materials?tab=catalogue")
+    expect(page.get_by_text("[Demo] OPC 53 cement").first).to_be_visible()
+    download(page)
+    sign_out(page)
+    sign_in(page, "safety")
+    page.goto(BASE + "/materials")
+    expect(page.get_by_text(DENIED)).to_be_visible()
