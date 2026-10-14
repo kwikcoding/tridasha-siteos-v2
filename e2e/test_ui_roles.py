@@ -51,7 +51,10 @@ def sign_in(page: Page, role: str):
 
 
 def sign_out(page: Page):
-    page.keyboard.press("Escape")          # close any open window first
+    page.wait_for_load_state("networkidle")
+    if page.locator("[role=dialog]").count():           # close an open window (it covers the header)
+        page.get_by_role("button", name="Close window").first.click()
+    expect(page.locator("[role=dialog]")).to_have_count(0)
     page.get_by_role("button", name="Log out").click()
     expect(page.get_by_role("button", name="Sign in")).to_be_visible()
 
