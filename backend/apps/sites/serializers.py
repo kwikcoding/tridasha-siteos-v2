@@ -17,6 +17,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = ["id", "site", "site_name", "code", "name", "status", "start_date", "end_date", "budget", "head",
                   "head_name", "description", "created_at"]
+        validators = []      # uniqueness per site is checked in validate() with a plain-language message
 
     def validate_code(self, v):
         return v.strip().upper()

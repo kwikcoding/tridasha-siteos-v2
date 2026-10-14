@@ -82,6 +82,7 @@ class DailyReportSerializer(SiteProjectSerializer):
                   "created_by", "created_by_name", "created_at", "submitted_at", "reviewed_by_name", "reviewed_at",
                   "review_note", "labour_marked"]
         read_only_fields = ["status", "created_by", "submitted_at", "reviewed_at", "review_note"]
+        validators = []      # one report per site/project/day is checked in validate() with a plain-language message
 
     def get_labour_marked(self, obj):
         """Attendance marked for the same site/day — a cross-check against the manpower in the report."""

@@ -51,6 +51,7 @@ class DocumentSerializer(SiteProjectSerializer):
         fields = ["id", "site", "site_name", "project", "project_name", "category", "number", "title", "discipline",
                   "archived", "current_rev", "revisions", "created_by_name", "created_at"]
         read_only_fields = ["archived"]
+        validators = []      # number per site is checked in validate() (case-insensitive, plain-language message)
 
     def get_current_rev(self, obj):
         r = next(iter(obj.revisions.all()), None)

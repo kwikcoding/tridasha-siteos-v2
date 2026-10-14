@@ -67,7 +67,8 @@ class ProjectsTests(ModulesBase):
                                                        "start_date": "2026-01-01", "end_date": "2027-06-30"}, 201)
         self.assertEqual(d["code"], "TB")
         self.call("store", "post", "/api/projects/", {"site": self.site.pk, "code": "X", "name": "X"}, 403)
-        self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TB", "name": "Dup"}, 400)
+        r = self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TB", "name": "Dup"}, 400)
+        self.assertIn("already used at this site", str(r))           # plain message, not the framework's
         self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TC", "name": "Bad dates",
                                                    "start_date": "2027-01-01", "end_date": "2026-01-01"}, 400)
         self.call("pm", "patch", f"/api/projects/{d['id']}/", {"status": "completed"})
@@ -127,7 +128,8 @@ class DailyProgressTests(ModulesBase):
     def test_one_per_day_submit_approve_lock(self):
         d = self.call("engineer", "post", "/api/dpr/", self.body(), 201)
         self.assertEqual((d["status"], d["manpower_total"]), ("draft", 32))
-        self.call("engineer", "post", "/api/dpr/", self.body(), 400)                  # duplicate day
+        r = self.call("engineer", "post", "/api/dpr/", self.body(), 400)              # duplicate day
+        self.assertIn("already a daily report", str(r))
         self.call("engineer", "post", "/api/dpr/", self.body(date=(TODAY + timedelta(days=1)).isoformat()), 400)
         self.call("engineer", "post", "/api/dpr/", self.body(work_items=[{"activity": "x", "qty": -1}]), 400)
         self.call("store", "post", "/api/dpr/", self.body(project=None), 403)         # store can only view
