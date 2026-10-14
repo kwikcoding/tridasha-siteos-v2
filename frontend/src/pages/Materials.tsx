@@ -49,7 +49,7 @@ export function MaterialPicker({ value, onPick, siteId }: { value: Material | nu
     );
   return (
     <div className="relative">
-      <input className="input" placeholder="Search the catalogue by code or name…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="input" aria-label="Search the catalogue" placeholder="Search the catalogue by code or name…" value={q} onChange={(e) => setQ(e.target.value)} />
       {dq.length >= 2 && res.data && (
         <div className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border bg-white shadow-lg">
           {res.data.results.length === 0 && <div className="px-3 py-2 text-sm text-slate-500">No match — type the name in the box below instead.</div>}
@@ -78,21 +78,21 @@ function StockEntryForm({ site, onDone }: { site: Site; onDone: () => void }) {
     <form className="space-y-3" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
       <div><label className="label">Material</label><MaterialPicker value={mat} onPick={setMat} siteId={site.id} /></div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <div><label className="label">Type</label>
-          <select className="input" value={f.kind} onChange={(e) => { const k = e.target.value; setF({ ...f, kind: k, source: k === "IN" ? "opening" : k === "OUT" ? "manual" : "adjust" }); }}>
+        <div><label className="label" htmlFor="mat-1">Type</label>
+          <select id="mat-1" className="input" value={f.kind} onChange={(e) => { const k = e.target.value; setF({ ...f, kind: k, source: k === "IN" ? "opening" : k === "OUT" ? "manual" : "adjust" }); }}>
             <option value="IN">Received (IN)</option><option value="OUT">Issued (OUT)</option><option value="ADJ">Adjustment</option>
           </select></div>
-        <div><label className="label">Quantity{f.kind === "ADJ" ? " (− to reduce)" : ""}</label><input className="input" type="number" step="any" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} required /></div>
-        <div><label className="label">Date</label><input className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></div>
-        <div><label className="label">Source</label>
-          <select className="input" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
+        <div><label className="label" htmlFor="mat-2">Quantity{f.kind === "ADJ" ? " (− to reduce)" : ""}</label><input id="mat-2" className="input" type="number" step="any" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} required /></div>
+        <div><label className="label" htmlFor="mat-3">Date</label><input id="mat-3" className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></div>
+        <div><label className="label" htmlFor="mat-4">Source</label>
+          <select id="mat-4" className="input" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
             {sources.map((s) => <option key={s} value={s}>{SOURCE_LABEL[s]}</option>)}
           </select></div>
-        <div><label className="label">Ref (GRN / challan)</label><input className="input" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /></div>
-        <div><label className="label">Rate (₹)</label><input className="input" type="number" step="any" value={f.rate} onChange={(e) => setF({ ...f, rate: e.target.value })} /></div>
+        <div><label className="label" htmlFor="mat-5">Ref (GRN / challan)</label><input id="mat-5" className="input" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /></div>
+        <div><label className="label" htmlFor="mat-6">Rate (₹)</label><input id="mat-6" className="input" type="number" step="any" value={f.rate} onChange={(e) => setF({ ...f, rate: e.target.value })} /></div>
       </div>
-      <div><label className="label">Supplier / issued to</label><input className="input" value={f.party} onChange={(e) => setF({ ...f, party: e.target.value })} /></div>
-      <div><label className="label">Note{f.kind === "ADJ" ? " (reason, required)" : ""}</label><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} required={f.kind === "ADJ"} /></div>
+      <div><label className="label" htmlFor="mat-7">Supplier / issued to</label><input id="mat-7" className="input" value={f.party} onChange={(e) => setF({ ...f, party: e.target.value })} /></div>
+      <div><label className="label" htmlFor="mat-8">Note{f.kind === "ADJ" ? " (reason, required)" : ""}</label><textarea id="mat-8" className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} required={f.kind === "ADJ"} /></div>
       <p className="text-xs text-slate-500">Material received or issued against an indent is posted automatically from the indent — use this for opening stock, transfers and counts.</p>
       {save.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(save.error as Error).message}</p>}
       <div className="flex justify-end"><button className="btn-primary" disabled={!mat || save.isPending}>Save entry</button></div>
@@ -117,7 +117,7 @@ function StockTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select className="input max-w-xs" value={siteId ?? ""} onChange={(e) => setSiteId(Number(e.target.value))}>
+        <select aria-label="Site" className="input max-w-xs" value={siteId ?? ""} onChange={(e) => setSiteId(Number(e.target.value))}>
           {sites.data?.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
         </select>
         <div className="flex rounded-lg border bg-white p-0.5">
@@ -125,7 +125,7 @@ function StockTab() {
             <button key={v} className={`rounded-md px-3 py-1.5 text-sm ${view === v ? "bg-navy text-white" : "text-slate-600"}`} onClick={() => setView(v)}>{v === "balances" ? "Balances" : "Ledger"}</button>
           ))}
         </div>
-        <input className="input max-w-xs" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input aria-label="Filter" className="input max-w-xs" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <div className="flex-1" />
         {siteId && has("materials.export") && <a className="btn-ghost" href={view === "balances" ? `/api/stock/balances/?site=${siteId}&format_xlsx=1` : `/api/stock/export/?site=${siteId}`}>Download Excel</a>}
         {has("materials.stock") && site && <button className="btn-gold" onClick={() => setAdding(true)}>+ Stock entry</button>}
@@ -199,7 +199,7 @@ function MaterialForm({ m, onDone }: { m: Material | null; onDone: () => void })
     onSuccess: onDone,
   });
   const inp = (k: keyof typeof f, label: string, type = "text") => (
-    <div><label className="label">{label}</label><input className="input" type={type} step={type === "number" ? "any" : undefined} value={String(f[k])} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
+    <div><label className="label" htmlFor={`mf-${k}`}>{label}</label><input id={`mf-${k}`} className="input" type={type} step={type === "number" ? "any" : undefined} value={String(f[k])} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
   );
   return (
     <form className="space-y-3" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
@@ -207,7 +207,7 @@ function MaterialForm({ m, onDone }: { m: Material | null; onDone: () => void })
         {inp("code", "Code")}{inp("name", "Name")}{inp("category", "Category")}{inp("unit", "Unit")}
         {inp("std_rate", "Standard rate (₹)", "number")}{inp("gst_rate", "GST %", "number")}{inp("hsn", "HSN")}{inp("reorder_level", "Reorder level", "number")}
       </div>
-      <div><label className="label">Specification</label><textarea className="input" rows={2} value={f.spec} onChange={(e) => setF({ ...f, spec: e.target.value })} /></div>
+      <div><label className="label" htmlFor="mat-10">Specification</label><textarea id="mat-10" className="input" rows={2} value={f.spec} onChange={(e) => setF({ ...f, spec: e.target.value })} /></div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Active (can be indented)</label>
       {save.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(save.error as Error).message}</p>}
       <div className="flex justify-end"><button className="btn-primary" disabled={save.isPending}>Save</button></div>
@@ -310,10 +310,10 @@ function RegisterForm({ r, onDone }: { r: RegisterItem | null; onDone: () => voi
     onSuccess: onDone,
   });
   const inp = (k: string, label: string, type = "text", span = false) => (
-    <div className={span ? "sm:col-span-2" : ""}><label className="label">{label}</label><input className="input" type={type} step={type === "number" ? "any" : undefined} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} readOnly={k === "item_id" && !!r} /></div>
+    <div className={span ? "sm:col-span-2" : ""}><label className="label" htmlFor={`rg-${k}`}>{label}</label><input id={`rg-${k}`} className="input" type={type} step={type === "number" ? "any" : undefined} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} readOnly={k === "item_id" && !!r} /></div>
   );
   const sel = (k: string, label: string, opts: string[]) => (
-    <div><label className="label">{label}</label><select className="input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })}>{opts.map((o) => <option key={o}>{o}</option>)}</select></div>
+    <div><label className="label" htmlFor={`rg-${k}`}>{label}</label><select id={`rg-${k}`} className="input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })}>{opts.map((o) => <option key={o}>{o}</option>)}</select></div>
   );
   return (
     <form className="space-y-3" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
@@ -323,8 +323,8 @@ function RegisterForm({ r, onDone }: { r: RegisterItem | null; onDone: () => voi
         {inp("req_qty", "Required quantity", "number")}{inp("required_by", "Required by", "date")}{inp("zone", "Block / floor / zone")}{inp("grade", "Approved size / grade")}
         {inp("make", "Approved make")}{inp("vendor", "Vendor")}{inp("boq_ref", "Drawing / BOQ reference", "text", true)}
       </div>
-      <div><label className="label">Specification to confirm</label><textarea className="input" rows={2} value={f.spec} onChange={(e) => setF({ ...f, spec: e.target.value })} /></div>
-      <div><label className="label">Remarks</label><textarea className="input" rows={2} value={f.remarks} onChange={(e) => setF({ ...f, remarks: e.target.value })} /></div>
+      <div><label className="label" htmlFor="mat-13">Specification to confirm</label><textarea id="mat-13" className="input" rows={2} value={f.spec} onChange={(e) => setF({ ...f, spec: e.target.value })} /></div>
+      <div><label className="label" htmlFor="mat-14">Remarks</label><textarea id="mat-14" className="input" rows={2} value={f.remarks} onChange={(e) => setF({ ...f, remarks: e.target.value })} /></div>
       <div><label className="label">Linked catalogue item (for stock &amp; indents)</label><MaterialPicker value={mat} onPick={setMat} /></div>
       {save.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(save.error as Error).message}</p>}
       <div className="flex justify-end"><button className="btn-primary" disabled={save.isPending}>Save</button></div>

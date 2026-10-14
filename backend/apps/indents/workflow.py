@@ -84,6 +84,7 @@ NEEDS_REMARK = {"reject", "sendback", "hold", "rejectVendor", "rejectReceipt", "
 FINAL = {"Closed", "Stock Issued", "Rejected", "Cancelled"}
 BEFORE_PO = {"requester", "stock", "tech", "mgmt", "avail", "rfq", "vendor"}
 NON_APPROVAL = {"raise", "resubmit", "edit", "sendback", "hold", "resume"}
+SELF_APPROVAL_BLOCKED = {"tech", "mgmt", "vendor"}     # approval steps the requester can't act on for their own indent
 
 ACTION_LABEL = {
     "raise": "Raised", "resubmit": "Resubmitted", "approve": "Approved", "reject": "Rejected",
@@ -364,6 +365,16 @@ def allowed_actions(i: dict, who: dict, cfg: Config) -> list[str]:
                 add("cancel")
     if purchase_open(i) and acts_at(who, i["pstage"]) and i["pstage"] in STAGE:
         add(*[a for a in STAGE[i["pstage"]].actions if step_allows(who, i["pstage"], a)])
+    # separation of duties: nobody approves their own indent (technical, budget, supplier) or verifies / authorises
+    # payment for it. The administrator can, but only as a recorded override with a reason.
+    if is_requester(i, who) and not who.get("admin"):
+        if stage in SELF_APPROVAL_BLOCKED:
+            for a in ("approve", "reject"):
+                if a in out:
+                    out.remove(a)
+        for a in ("verifyInv", "authorizePay", "pay"):
+            if a in out:
+                out.remove(a)
     # separation of duties: whoever authorised the payment can't also settle it — administrator included
     if "pay" in out and payment_authoriser(i) is not None and payment_authoriser(i) == who.get("id"):
         out.remove("pay")

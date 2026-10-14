@@ -179,8 +179,8 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
       )}
       {action === "sendback" && (
         <div>
-          <label className="label">Send back to</label>
-          <select className="input max-w-xs" value={to} onChange={(e) => setTo(e.target.value)}>
+          <label className="label" htmlFor="idt-1">Send back to</label>
+          <select id="idt-1" className="input max-w-xs" value={to} onChange={(e) => setTo(e.target.value)}>
             <option value="requester">The person who raised it</option>
             <option value="previous">The previous step</option>
           </select>

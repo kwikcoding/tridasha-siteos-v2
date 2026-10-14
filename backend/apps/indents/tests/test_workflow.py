@@ -296,3 +296,34 @@ class Receipts(unittest.TestCase):
         self.assertIn("40", str(e.exception))
         i = act(i, STORE, "receive", cfg, {"qty": 40})
         self.assertEqual((i["status"], i["received_qty"]), ("Received", 100))
+
+
+class SelfApproval(unittest.TestCase):
+    """Nobody approves or pays their own indent; the administrator can only as a recorded override."""
+
+    def test_project_head_cannot_approve_own_indent_another_can(self):
+        cfg = wf.config()
+        i = new_indent(cfg, raised_by=PM["id"])
+        i = act(i, STORE, "approve", cfg)
+        self.assertEqual(i["stage"], "tech")
+        self.assertNotIn("approve", wf.allowed_actions(i, PM, cfg))
+        self.assertIn("sendback", wf.allowed_actions(i, PM, cfg))         # can still send it back / hold
+        other_pm = {**PM, "id": 77}
+        self.assertIn("approve", wf.allowed_actions(i, other_pm, cfg))
+
+    def test_management_cannot_approve_own_budget_or_authorise_own_payment(self):
+        cfg = wf.config()
+        i = new_indent(cfg, raised_by=MGMT["id"])
+        for who in (STORE, PM):
+            i = act(i, who, "approve", cfg)
+        self.assertEqual(i["stage"], "mgmt")
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "approve", {}, {}, MGMT, cfg)
+        t = wf.plan(i, "approve", {"remarks": "Director is the only approver this week"}, {}, ADMIN, cfg)
+        self.assertTrue(t["override"])                                    # admin can, flagged with a reason
+
+    def test_requester_cannot_verify_own_invoice(self):
+        cfg = wf.config()
+        i = at_invoice(cfg)
+        i["raised_by"] = ACCOUNTS["id"]
+        self.assertNotIn("verifyInv", wf.allowed_actions(i, ACCOUNTS, cfg))

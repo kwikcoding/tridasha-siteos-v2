@@ -45,6 +45,12 @@ jobs:
       - name: API tests
         shell: bash
         run: python manage.py test apps -v 2 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+      - name: Show performance results
+        if: always()
+        shell: bash
+        run: |
+          [ -f perf-results.json ] || exit 0
+          python -c "import json;r=json.load(open('perf-results.json'));print('::notice title=Performance (ms, queries)::'+'%0A'.join(f\"{x['screen']}: {x['ms']} ms, {x['queries']} queries\" for x in r))"
       - name: Report test failures as annotations
         if: failure()
         shell: bash
@@ -143,3 +149,193 @@ jobs:
           print("::error title=" + sys.argv[1] + "::" + (t or "(empty)").replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
           PY
           done
+
+  security:
+    # dependency vulnerabilities, static checks of the Python code, and no raw HTML injection in the React code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python dependency audit (pip-audit)
+        shell: bash
+        run: |
+          pip install pip-audit bandit
+          pip-audit -r backend/requirements.txt --format columns 2>&1 | tee pip-audit.txt; echo "rc=${PIPESTATUS[0]}" >> pip-audit.txt
+      - name: Python static security scan (bandit, medium+)
+        shell: bash
+        run: bandit -r backend/apps backend/config -x '*/tests/*,*/migrations/*' -ll -f txt 2>&1 | tee bandit.txt; echo "rc=${PIPESTATUS[0]}" >> bandit.txt
+      - name: npm audit (production dependencies)
+        shell: bash
+        run: cd frontend && npm install --no-audit --no-fund >/dev/null && (npm audit --omit=dev --audit-level=high 2>&1 | tee ../npm-audit.txt; echo "rc=${PIPESTATUS[0]}" >> ../npm-audit.txt)
+      - name: No raw HTML in React, no secrets in the repo
+        shell: bash
+        run: |
+          if grep -rn "dangerouslySetInnerHTML\|eval(" frontend/src; then echo "raw HTML / eval found"; exit 1; fi
+          if git grep -nE "(sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|OPENSSH) PRIVATE KEY)" -- . ':!*.md'; then echo "secret found"; exit 1; fi
+          echo "no raw HTML, no eval, no secrets"
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          for f in pip-audit.txt bandit.txt npm-audit.txt; do
+            [ -f $f ] && python -c "import sys;t=open(sys.argv[1]).read()[-3500:];print('::notice title='+sys.argv[1]+'::'+t.replace('%','%25').replace('\n','%0A'))" $f
+          done
+          grep -q "rc=0" pip-audit.txt && grep -q "rc=0" bandit.txt && grep -q "rc=0" npm-audit.txt
+
+  demo-stack:
+    # the separate demo environment, exactly as on the laptop: docker compose --profile demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the demo stack only
+        shell: bash
+        run: |
+          chmod -R a+rwX backend          # the container user writes uploads into the bind-mounted folder
+          cp .env.example .env
+          sed -i "s/^DJANGO_SECRET_KEY=.*/DJANGO_SECRET_KEY=ci-demo-$(openssl rand -hex 16)/" .env
+          sed -i "s/^ADMIN_MOBILE=.*/ADMIN_MOBILE=9999900000/" .env
+          echo "ADMIN_PASSWORD=$(openssl rand -hex 12)" >> .env
+          export DEMO_PASSWORD=$(openssl rand -hex 12); echo "DEMO_PASSWORD=$DEMO_PASSWORD" >> "$GITHUB_ENV"
+          docker compose --profile demo up -d --build db-demo backend-demo frontend-demo
+          for i in $(seq 1 90); do curl -sf http://localhost:8001/api/health/ && break; sleep 2; done
+          for i in $(seq 1 90); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 2; done
+      - name: Check the demo stack
+        shell: bash
+        run: |
+          set -e
+          docker compose ps --format '{{.Service}} {{.State}}' | tee services.txt
+          if grep -E "^(db|backend|worker|beat|frontend) " services.txt; then echo "main stack was started"; exit 1; fi
+          python3 - <<'PY'
+          import http.cookiejar, json, os, urllib.request
+          jar = http.cookiejar.CookieJar()
+          op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          base = "http://localhost:5174/api"            # through the demo frontend's proxy, like a browser
+          op.open(base + "/auth/csrf/")
+          tok = next(c.value for c in jar if c.name == "csrftoken")
+          def call(path, body=None):
+              req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None,
+                                           headers={"Content-Type": "application/json", "X-CSRFToken": tok,
+                                                    "Referer": "http://localhost:5174/"})
+              return json.loads(op.open(req).read())
+          me = call("/auth/login/", {"mobile": "9000000001", "password": os.environ["DEMO_PASSWORD"]})
+          assert me["name"].startswith("Demo"), me
+          for path, minimum in [("/projects/", 2), ("/tasks/", 4), ("/dpr/", 4), ("/indents/?tab=all", 10),
+                                ("/observations/", 4), ("/documents/", 3), ("/equipment/", 4), ("/workers/", 8)]:
+              d = call(path)
+              n = d["count"] if isinstance(d, dict) else len(d)
+              assert n >= minimum, (path, n)
+              print(f"{path}: {n} rows")
+          PY
+          docker compose exec -T db-demo psql -U siteos -d siteos_demo -tAc "select count(*) from django_migrations" | tee m.txt
+          docker compose run --rm --no-deps -e DATABASE_URL=postgres://siteos:siteos@db-demo:5432/siteos_demo backend-demo python manage.py migrate --check
+          ls backend/media-demo | head
+          test ! -e backend/media/uploads || { echo "demo files leaked into the main uploads folder"; exit 1; }
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile demo logs --tail 80 backend-demo
+
+  migrations-upgrade:
+    # upgrade a database made by the previous release (f723faf, before the new modules) with data in it
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: siteos
+          POSTGRES_PASSWORD: siteos
+          POSTGRES_DB: siteos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U siteos" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: ci-only
+      DATABASE_URL: postgres://siteos:siteos@localhost:5432/siteos
+      CELERY_EAGER: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      - name: Previous release — migrate and fill with data
+        shell: bash
+        run: |
+          git worktree add ../old f723faf
+          cd ../old/backend
+          python manage.py migrate --noinput
+          python manage.py seed
+          DEMO_PASSWORD=old-release-pass-1 python manage.py seed_demo
+          python manage.py shell -c "from apps.indents.models import Indent,IndentEvent;from apps.materials.models import StockEntry,Material;from apps.audit.models import AuditLog;import json;print(json.dumps({'indents':Indent.objects.count(),'events':IndentEvent.objects.count(),'stock':StockEntry.objects.count(),'materials':Material.objects.count(),'audit':AuditLog.objects.count(),'paid':str(sum(i.paid_total or 0 for i in Indent.objects.all()))}))" | tail -1 > /tmp/before.json
+          cat /tmp/before.json
+      - name: Upgrade to this commit
+        working-directory: backend
+        shell: bash
+        run: |
+          python manage.py migrate --plan | tee plan.txt
+          if grep -E "Remove field|Delete model|Alter field|Rename" plan.txt; then echo "not additive"; exit 1; fi
+          python manage.py migrate --noinput
+          python manage.py migrate --check
+          python manage.py check
+          python manage.py shell -c "from apps.indents.models import Indent,IndentEvent;from apps.materials.models import StockEntry,Material;from apps.audit.models import AuditLog;import json;print(json.dumps({'indents':Indent.objects.count(),'events':IndentEvent.objects.count(),'stock':StockEntry.objects.count(),'materials':Material.objects.count(),'audit':AuditLog.objects.count(),'paid':str(sum(i.paid_total or 0 for i in Indent.objects.all()))}))" | tail -1 > /tmp/after.json
+          cat /tmp/after.json
+          python -c "import json;a,b=json.load(open('/tmp/before.json')),json.load(open('/tmp/after.json'));assert a==b,(a,b);print('::notice title=Migration upgrade::all rows kept '+json.dumps(a))"
+          DEMO_PASSWORD=new-release-pass-1 python manage.py seed_demo
+          python manage.py dbstats | head -30
+      - name: Roll back the new migrations (CI database only) and forward again
+        working-directory: backend
+        shell: bash
+        run: |
+          python manage.py migrate core zero --noinput
+          python manage.py migrate sites 0001 --noinput
+          python manage.py migrate indents 0003 --noinput
+          python manage.py migrate --noinput
+          python manage.py migrate --check
+
+  backup-restore:
+    # the real procedure on the docker compose stack: back up, restore into a new database, compare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start database and fill it
+        shell: bash
+        run: |
+          chmod -R a+rwX backend
+          cp .env.example .env
+          sed -i "s/^DJANGO_SECRET_KEY=.*/DJANGO_SECRET_KEY=ci-backup-$(openssl rand -hex 16)/" .env
+          docker compose up -d db
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U siteos && break; sleep 2; done
+          docker compose run --rm --no-deps -e DEMO_PASSWORD=$(openssl rand -hex 12) -e CELERY_EAGER=1 backend sh -c \
+            "python manage.py migrate --noinput && python manage.py seed && python manage.py seed_demo"
+          docker compose run --rm --no-deps backend python manage.py dbstats > before.json
+          ls -R backend/media | head -20
+      - name: Back up
+        shell: bash
+        run: |
+          scripts/backup.sh backups | tee backup.log
+          echo "BASE=$(tail -1 backup.log)" >> "$GITHUB_ENV"
+          ls -la backups
+      - name: Restore into a new database and compare
+        shell: bash
+        run: |
+          set -e
+          if scripts/restore.sh "$BASE" --target siteos; then echo "restore over live DB was allowed"; exit 1; fi
+          scripts/restore.sh "$BASE" --target siteos_restore --media-dir backend/media-restore
+          if scripts/restore.sh "$BASE" --target siteos_restore; then echo "existing DB overwritten"; exit 1; fi
+          docker compose run --rm --no-deps -e DATABASE_URL=postgres://siteos:siteos@db:5432/siteos_restore \
+            -e MEDIA_ROOT=/app/media-restore backend python manage.py dbstats > after.json
+          diff before.json after.json && echo "::notice title=Backup restore::database identical (row counts, totals, file list)"
+          (cd backend/media && find . -type f -exec sha256sum {} + | sort) > m1.txt
+          (cd backend/media-restore && find . -type f -exec sha256sum {} + | sort) > m2.txt
+          diff m1.txt m2.txt && echo "::notice title=Backup restore::$(wc -l < m1.txt) uploaded files identical"
+          # a corrupted backup is detected before anything is restored
+          cp "$BASE.dump" bad.dump && printf 'x' >> "$BASE.dump"
+          if scripts/restore.sh "$BASE" --target siteos_restore2; then echo "corrupt backup was restored"; exit 1; fi
+          cp bad.dump "$BASE.dump"
