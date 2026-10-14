@@ -67,11 +67,15 @@ class Indent(models.Model):
     received_qty = models.DecimalField(**QTY)
     balance_cancelled = models.DecimalField(**QTY)
 
-    # 02 stock / 03 tech / 04 mgmt
+    # 02 stock / 03 tech / 04a QS / 04b mgmt
     stock_note = models.TextField(blank=True)
     stock_seen = models.DecimalField(**QTY)
     spec_note = models.TextField(blank=True)
     boq_ref = models.CharField(max_length=100, blank=True)
+    boq_qty = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    qty_indented_to_date = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    budget_remaining = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    qs_note = models.TextField(null=True, blank=True)
     budget_note = models.TextField(blank=True)
     # 05 rfq / 06 vendor
     quotes = models.JSONField(default=list, blank=True)        # [{vendor, rate, gst, freight, delivery_days, terms}]
@@ -115,7 +119,7 @@ class Indent(models.Model):
 
     ENGINE_FIELDS = ["status", "stage", "pstatus", "pstage", "qty", "approved_qty", "issued_qty", "purchase_qty",
                      "received_qty", "held_from", "rate", "po_rate", "est_rate", "inv_amount", "inv_gst", "pay_auth_amount",
-                     "paid_total"]
+                     "paid_total", "boq_ref", "boq_qty", "qty_indented_to_date", "budget_remaining", "qs_note"]
 
     def as_engine_dict(self, history=None) -> dict:
         d = {}

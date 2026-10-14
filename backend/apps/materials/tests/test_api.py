@@ -32,6 +32,7 @@ class MaterialsAPI(TestCase):
         cls.mgmt = mk("9200000004", "Mgmt", "management")
         cls.purchase = mk("9200000005", "Purchase", "purchase")
         cls.viewer = mk("9200000006", "Viewer", "viewer")
+        cls.qs = mk("9200000007", "QS", "qs")
         cls.cement = Material.objects.create(code="CEM-53", name="OPC 53 Cement", unit="bag", std_rate=410)
 
     def c(self, user):
@@ -121,6 +122,7 @@ class MaterialsAPI(TestCase):
 
         act(self.store, "approve")
         act(self.pm, "approve")
+        act(self.qs, "approve", data={"boq_ref": "BOQ-1"})
         act(self.mgmt, "approve")
         # can't issue more than is in stock
         r = self.c(self.store).post(f"/api/indents/{iid}/act/", {"action": "issue", "qty": 40}, format="json")

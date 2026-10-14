@@ -105,10 +105,26 @@ class RoleSignInMatrix(TestCase):
         r = APIClient().post("/api/auth/login/", {"mobile": u.mobile, "password": PW}, format="json")
         self.assertEqual(r.status_code, 400)
 
-    def test_qs_is_read_only_and_safety_cannot_see_indents(self):
+    def test_qs_cannot_raise_and_safety_cannot_see_indents(self):
         qs = self.login("qs")
         self.assertEqual(qs.get("/api/indents/").status_code, 200)
         self.assertEqual(qs.post("/api/indents/", {"site": self.site.pk, "item": "C", "qty": 1}, format="json").status_code, 403)
         safety = self.login("safety")
         self.assertEqual(safety.get("/api/indents/").status_code, 403)
         self.assertEqual(safety.get("/api/materials/").status_code, 403)
+
+    def test_qs_login_can_check_only_qs_step_without_edit_permission(self):
+        from apps.indents.models import Indent
+        i = Indent.objects.create(number="QS-ROLE-1", site=self.site, item="Cement", qty=10,
+                                  raised_by=self.U["engineer"], stage="qs", status="Under Verification")
+        qs = self.login("qs")
+        me = qs.get("/api/auth/me/").json()
+        self.assertEqual(me["stages"], ["qs"])
+        self.assertNotIn("indents.edit", me["permissions"])
+        r = qs.post(f"/api/indents/{i.pk}/act/", {"action": "approve", "data": {"boq_ref": "BOQ-1"}}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["stage"], "mgmt")
+        for stage in ("stock", "tech", "mgmt", "rfq", "vendor"):
+            Indent.objects.filter(pk=i.pk).update(stage=stage)
+            r = qs.post(f"/api/indents/{i.pk}/act/", {"action": "approve"}, format="json")
+            self.assertEqual(r.status_code, 400, (stage, r.content))

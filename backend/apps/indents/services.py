@@ -22,7 +22,8 @@ class ActionDataSerializer(serializers.ModelSerializer):
         extra_kwargs = {f: {"required": False} for f in DATA_FIELDS}
 
     def validate(self, attrs):
-        for k in ("inv_amount", "inv_gst", "pay_auth_amount", "pay_amount", "rate", "po_rate", "est_rate"):
+        for k in ("inv_amount", "inv_gst", "pay_auth_amount", "pay_amount", "rate", "po_rate", "est_rate",
+                  "boq_qty", "qty_indented_to_date", "budget_remaining"):
             if attrs.get(k) is not None and attrs[k] < 0:
                 raise serializers.ValidationError({k: "Can’t be negative."})
         return attrs

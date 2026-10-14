@@ -1,5 +1,34 @@
 # Tridasha SiteOS v2 — functional & business-logic verification
 
+## QS quantity and budget check — local verification (14 Oct 2026, branch `qs-check`)
+
+Based on `verify-phase-3` at `4820055`. Adds optional step 04a before Management's 04b, QS role permissions,
+BOQ and budget validation, quantity reductions, summary fields, exports, and an idempotent demo example.
+Existing Management-stage indents are not moved backwards. Schema changes are four nullable columns;
+the role migration updates only the built-in QS role and preserves other role settings.
+
+- Backend: **148 tests passed**, including QS validation, role isolation, API persistence/export,
+  notifications, migration reversal, and upgrading existing demo data without duplicating it.
+- Frontend: **type-check and production build passed**.
+- Browser: the initial 33-test run had 30 passes and three failures. The missing local `openpyxl`
+  dependency was installed; the new QS test was corrected to await the approval response instead of
+  reading the stage while the request was still pending. The catalogue/upload, QS approval, and stock-check
+  scenarios each passed on targeted reruns. This is not a claim of a subsequent clean full-suite run.
+- Migration checks: no missing migrations. An isolated database seeded with release `f723faf` upgraded
+  successfully, retaining row counts, payment totals, and existing indent stages. The QS migrations
+  also reversed and reapplied successfully.
+- Security: pip-audit found no known Python dependency vulnerabilities; Bandit found no medium/high
+  issues. npm audit passed the high-severity threshold, with two inherited moderate advisories remaining.
+  Changed source files were scanned for token/private-key patterns and configured local secrets: no matches.
+
+Tests used a separate local Docker project and database. The normal development database, existing
+services, and production deployments were not changed. `.env`, local LAN overrides, generated lockfiles,
+performance output, and temporary test artifacts are excluded from this commit.
+
+GitHub CI has **not** run for this QS change; the seven remote jobs remain pending a successful push.
+The historical Phase 3 results below describe the base branch, not this change. Backup/restore and
+complete demo-stack verification have not been repeated for this QS commit.
+
 ## Phase 3 — security, isolation, concurrency, performance, backup and release readiness (14 Oct 2026, PR #9, branch `verify-phase-3`)
 
 PR #8 was merged after green CI and a conflict-free check.

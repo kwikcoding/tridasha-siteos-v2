@@ -27,7 +27,7 @@ class CrossDepartment(TestCase):
         cls.U = {}
         for n, (key, dept) in enumerate([("engineer", "Projects"), ("store", "Stores"), ("pm", "Projects"), ("pm2", "Projects"),
                                          ("management", "Management"), ("management2", "Management"), ("purchase", "Purchase"),
-                                         ("accounts", "Accounts"), ("accounts2", "Accounts")]):
+                                         ("accounts", "Accounts"), ("accounts2", "Accounts"), ("qs", "Projects")]):
             u = User.objects.create_user(f"97100000{n:02d}", PW, name=key, role=Role.objects.get(key=key.rstrip("2")),
                                          department=depts[dept])
             u.sites.add(cls.site)
@@ -61,9 +61,11 @@ class CrossDepartment(TestCase):
         r = self.act("pm", iid, "approve", expect=400)              # can't approve own at 03
         self.assertIn("can’t", r["detail"])
         self.act("pm2", iid, "approve")                              # another Project Head can
+        self.act("qs", iid, "approve", data={"boq_ref": "BOQ-1"})
         iid2 = self.raise_by("management")                          # a director raises one
         for who in ("store", "pm"):
             self.act(who, iid2, "approve")
+        self.act("qs", iid2, "approve", data={"boq_ref": "BOQ-1"})
         self.act("management", iid2, "approve", expect=400)        # not their own budget
         d = self.act("admin", iid2, "approve", expect=400)         # admin needs a reason (override)
         self.assertIn("Remarks", d["detail"])

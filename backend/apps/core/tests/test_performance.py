@@ -42,7 +42,7 @@ class Performance(TestCase):
         cls.store.sites.add(site)
         u = cls.pm
         pa, pb = Project.objects.create(site=site, code="TA", name="Tower A"), Project.objects.create(site=site, code="TB", name="Tower B")
-        stages = [("stock", "Requested"), ("tech", "Under Verification"), ("mgmt", "Under Verification"), ("rfq", "Purchase Required"),
+        stages = [("stock", "Requested"), ("tech", "Under Verification"), ("qs", "Under Verification"), ("mgmt", "Under Verification"), ("rfq", "Purchase Required"),
                   ("track", "PO Issued"), ("closed", "Closed")]
         inds = [Indent(number=f"IND-P-{n:05d}", site=site, project=pa if n % 2 else pb, item=f"Item {n % 40}", qty=10 + n % 7,
                        raised_by=u, stage=stages[n % 6][0], status=stages[n % 6][1], est_rate=100) for n in range(2000)]

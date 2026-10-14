@@ -5,7 +5,7 @@ by the API, the alert jobs and the reports. Ported from SiteOS v1 `workflow.js`.
 
 Two connected lifecycles:
 
-  INDENT    01 raise -> 02 stock -> 03 tech -> 04 mgmt -> (stock available?) -> 05 rfq
+  INDENT    01 raise -> 02 stock -> 03 tech -> 04a QS -> 04b mgmt -> (stock available?) -> 05 rfq
             -> 06 vendor -> 07 po -> 08 track (+09 receive) -> 10 issue & close
   PURCHASE  11 invoice -> 12 payment & close   (starts when material is first received)
 
@@ -52,7 +52,10 @@ STAGES: list[Stage] = [
           ("approve", "sendback", "hold"), done="Under Verification", approve_label="Verified — forward"),
     Stage("03", "tech", "indent", "Verify technical requirement", "Technical", "Project Head",
           ("approve", "reject", "sendback", "hold"), done="Under Verification", approve_label="Approve technically", can_qty=True),
-    Stage("04", "mgmt", "indent", "Approve requirement & budget", "Requirement & budget", "Authorised approver / Management",
+    Stage("04a", "qs", "indent", "Check quantity & budget against BOQ", "QS check", "QS / Quantity Surveyor",
+          ("approve", "reject", "sendback", "hold"), done="Under Verification",
+          approve_label="Quantity & budget checked — forward", can_qty=True),
+    Stage("04b", "mgmt", "indent", "Approve requirement & budget", "Requirement & budget", "Authorised approver / Management",
           ("approve", "reject", "sendback", "hold"), done="Approved", approve_label="Approve requirement & budget", can_qty=True),
     Stage("—", "avail", "indent", "Stock available? Issue from stores / purchase the balance", "Stock available?", "Storekeeper",
           ("issue", "purchase"), required=True),
@@ -82,9 +85,9 @@ PURCHASE_ACTIONS = {"verifyInv", "holdInv", "returnInv", "authorizePay", "pay", 
 NEEDS_REMARK = {"reject", "sendback", "hold", "rejectVendor", "rejectReceipt", "cancel", "cancelBalance",
                 "holdInv", "returnInv", "holdPay"}
 FINAL = {"Closed", "Stock Issued", "Rejected", "Cancelled"}
-BEFORE_PO = {"requester", "stock", "tech", "mgmt", "avail", "rfq", "vendor"}
+BEFORE_PO = {"requester", "stock", "tech", "qs", "mgmt", "avail", "rfq", "vendor"}
 NON_APPROVAL = {"raise", "resubmit", "edit", "sendback", "hold", "resume"}
-SELF_APPROVAL_BLOCKED = {"tech", "mgmt", "vendor"}     # approval steps the requester can't act on for their own indent
+SELF_APPROVAL_BLOCKED = {"tech", "qs", "mgmt", "vendor"}     # approval steps the requester can't act on for their own indent
 
 ACTION_LABEL = {
     "raise": "Raised", "resubmit": "Resubmitted", "approve": "Approved", "reject": "Rejected",
@@ -97,7 +100,7 @@ ACTION_LABEL = {
 }
 
 # Order in which the action forms show the fields.
-FIELD_ORDER = ["stock_seen", "stock_note", "spec_note", "boq_ref", "budget_note", "quotes", "purchase_note",
+FIELD_ORDER = ["stock_seen", "stock_note", "spec_note", "boq_ref", "boq_qty", "qty_indented_to_date", "budget_remaining", "qs_note", "budget_note", "quotes", "purchase_note",
                "vendor_final", "rate", "lead_days", "vendor_note", "po_no", "po_date", "po_vendor", "po_rate", "po_expected",
                "tracking", "grn_no", "inspection", "issued_to", "inv_no", "inv_date", "inv_amount", "inv_gst", "inv_note",
                "pay_auth_amount", "paid_on", "pay_mode", "pay_ref", "pay_amount"]
@@ -117,7 +120,8 @@ BUTTON_LABEL = {
 STAGE_FIELDS = {
     "stock": {"stock_note", "stock_seen"},
     "tech": {"spec_note"},
-    "mgmt": {"boq_ref", "budget_note"},
+    "qs": {"boq_ref", "boq_qty", "qty_indented_to_date", "budget_remaining", "qs_note"},
+    "mgmt": {"budget_note"},
     "rfq": {"quotes", "purchase_note"},
     "vendor": {"vendor_final", "rate", "lead_days", "vendor_note"},
     "po": {"po_no", "po_date", "po_vendor", "po_rate", "po_expected"},
@@ -137,7 +141,7 @@ REQUEST_FIELDS = {"site", "project", "material", "item", "item_code", "unit", "q
 DEFAULT_ROLE_STAGES = {
     "admin": [s.key for s in STAGES],
     "pm": ["tech"],
-    "qs": [],
+    "qs": ["qs"],
     "engineer": ["receive", "issue"],
     "purchase": ["rfq", "po", "track", "invoice"],
     "management": ["mgmt", "vendor", "payauth"],
@@ -287,7 +291,7 @@ def next_stage(i: dict, cfg: Config, frm: str) -> str:
 
 
 def prev_stage(i: dict, cfg: Config, frm: str) -> str:
-    keys = [s.key for s in pointer_stages(i, cfg) if s.key in {"stock", "tech", "mgmt", "rfq", "vendor"}]
+    keys = [s.key for s in pointer_stages(i, cfg) if s.key in {"stock", "tech", "qs", "mgmt", "rfq", "vendor"}]
     if frm in keys and keys.index(frm) > 0:
         return keys[keys.index(frm) - 1]
     return "requester"
@@ -522,6 +526,22 @@ def check_inputs(i: dict, action: str, entry: dict, data: dict, cfg: "Config | N
             raise WorkflowError("Approved quantity must be more than zero.")
         if _num(entry["qty_to"]) > need(i) + EPS:
             raise WorkflowError("Approved quantity can’t be more than requested — send it back instead.")
+    if action == "approve" and i.get("stage") == "qs":
+        for key, label in (("boq_qty", "BOQ quantity"), ("qty_indented_to_date", "Already indented quantity"),
+                           ("budget_remaining", "Budget remaining")):
+            if not _blank(data.get(key)) and _num(data[key]) < 0:
+                raise WorkflowError(f"{label} can’t be negative.")
+        remark = str(entry.get("remarks") or "").strip()
+        if not str(data.get("boq_ref") or "").strip() and not remark:
+            raise WorkflowError("Enter the BOQ reference, or explain in Remarks why there is none.")
+        # Check the quantity being forwarded, including a reduction made in this action.
+        checked = {**data, "approved_qty": entry["qty_to"]} if entry.get("qty_to") is not None else data
+        excess = _r3(_num(data.get("qty_indented_to_date")) + need(checked) - _num(data.get("boq_qty")))
+        if not _blank(data.get("boq_qty")) and excess > EPS and not remark:
+            raise WorkflowError(f"Quantity exceeds BOQ by {excess:g} — explain in Remarks.")
+        if not _blank(data.get("budget_remaining")) and indent_value(checked) > _num(data["budget_remaining"]) + EPS and not remark:
+            raise WorkflowError(f"Indent value (₹{indent_value(checked):,.2f}) exceeds the remaining budget "
+                                f"(₹{_num(data['budget_remaining']):,.2f}) — explain in Remarks.")
     if action == "approve" and i.get("stage") == "rfq":
         quotes = data.get("quotes") or []
         if not any(isinstance(q, dict) and q.get("vendor") for q in quotes):

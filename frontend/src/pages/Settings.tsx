@@ -54,8 +54,8 @@ function WorkflowSettings() {
         </ul>
       </section>
       <section className="card space-y-3 p-6">
-        <h2 className="font-semibold text-navy">Step 04 — management approval limit</h2>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Never send indents to management (skip step 04)</label>
+        <h2 className="font-semibold text-navy">Step 04b — management approval limit</h2>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Never send indents to management (skip step 04b)</label>
         {!never && (
           <div>
             <label className="label" htmlFor="lim">Send to management when indent value is at least (₹) — 0 = every indent</label>
