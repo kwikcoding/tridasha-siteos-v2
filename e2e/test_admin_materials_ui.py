@@ -122,7 +122,9 @@ def test_admin_creates_login_forced_password_change_then_deactivates(page: Page)
     page.get_by_label("Current password").fill(temp)
     page.get_by_label("New password", exact=True).fill(PW + "-own")
     page.get_by_label("Repeat new password").fill(PW + "-own")
-    page.get_by_role("button", name="Change password").click()
+    with page.expect_response(lambda r: "/api/auth/password/" in r.url) as resp:
+        page.get_by_role("button", name="Change password").click()
+    assert resp.value.status == 200, resp.value.text()[:200]
     page.goto(BASE + "/")
     expect(page.get_by_text(re.compile("Good day"))).to_be_visible()
     expect(page.locator("aside nav")).to_contain_text("Materials & Stock")
