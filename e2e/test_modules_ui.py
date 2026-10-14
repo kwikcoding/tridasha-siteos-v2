@@ -161,11 +161,17 @@ def test_attendance_marked_approved_and_locked(page: Page):
     page.get_by_role("button", name="All present").click()
     page.get_by_role("button", name="Save attendance").click()
     expect(page.get_by_text(re.compile(r"Saved \d+ marks"))).to_be_visible()
+    day = page.get_by_label("Date").input_value()
+    site_id = page.get_by_label("Site").first.input_value()
+    saved = page.request.get(f"{BASE}/api/attendance/?site={site_id}&from={day}&to={day}").json()["count"]
+    assert saved >= 8, (day, saved)                                                     # really stored
     assert not page.get_by_role("button", name="Approve this day").is_visible()      # supervisor can't approve
     sign_out(page)
     sign_in(page, "pm")
     page.goto(BASE + "/labour")
     page.get_by_label("Site").first.select_option(label=SITE)
+    page.get_by_label("Date").fill(day)
+    expect(page.get_by_text(re.compile(r"\b[1-9]\d* present"))).to_be_visible()          # marks loaded
     page.get_by_role("button", name="Approve this day").click()
     expect(page.get_by_text("This day is approved — attendance is locked.")).to_be_visible()
     page.goto(BASE + "/labour?tab=summary")
