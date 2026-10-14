@@ -21,6 +21,9 @@ class ObservationSerializer(SiteProjectSerializer):
         read_only_fields = ["ref_no", "status", "closure_note", "closed_at"]
 
     def get_evidence_files(self, obj):
+        view = self.context.get("view")
+        if view is not None and getattr(view, "action", "") == "list":
+            return None              # shown in the detail window only (avoids a query per row)
         return attachment_count(obj, "evidence")
 
     def validate(self, attrs):

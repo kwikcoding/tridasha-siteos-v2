@@ -8,7 +8,7 @@ import type { Page } from "../types";
 
 interface Obs { id: number; site: number; site_name: string; project: number | null; project_name: string; kind: string; ref_no: string; title: string;
   description: string; location: string; date: string; severity: string; assigned_to: number | null; assigned_to_name: string; due_date: string | null;
-  corrective_action: string; status: string; needs_evidence: boolean; evidence_files: number; overdue: boolean; closure_note: string;
+  corrective_action: string; status: string; needs_evidence: boolean; evidence_files: number | null; overdue: boolean; closure_note: string;
   closed_by_name: string; closed_at: string | null; created_by_name: string }
 
 export const KIND: Record<string, string> = { inspection: "Quality inspection", safety: "Safety observation", incident: "Safety incident", ncr: "NCR — non-conformance", near_miss: "Near miss" };
@@ -73,7 +73,7 @@ export default function Quality() {
               <div className="sm:col-span-3"><Detail label="Corrective action">{o.corrective_action}</Detail></div>
               {o.status === "closed" && <div className="sm:col-span-3"><Detail label={`Closed by ${o.closed_by_name} · ${dateTimeFmt(o.closed_at)}`}>{o.closure_note}</Detail></div>}
             </div>
-            {o.needs_evidence && o.status !== "closed" && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Closing this needs a photo or document as evidence ({o.evidence_files} attached so far).</p>}
+            {o.needs_evidence && o.status !== "closed" && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Closing this needs a photo or document as evidence ({o.evidence_files ?? 0} attached so far).</p>}
             <Attachments base={`/observations/${o.id}/`} canAdd={o.status !== "closed" && has("quality.edit")} title="Photos & evidence"
               purposes={[{ value: "evidence", label: "Closure evidence" }, { value: "finding", label: "Photo of the finding" }, { value: "other", label: "Other" }]} />
             <div className="flex flex-wrap gap-2 border-t pt-4">

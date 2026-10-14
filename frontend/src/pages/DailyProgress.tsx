@@ -10,7 +10,7 @@ type Row = Record<string, string | number>;
 interface Report { id: number; site: number; site_name: string; project: number | null; project_name: string; date: string; weather: string;
   summary: string; work_items: Row[]; manpower: Row[]; manpower_total: number; materials_used: Row[]; issues: string; tomorrow_plan: string;
   status: string; editable: boolean; created_by: number; created_by_name: string; submitted_at: string | null; reviewed_by_name: string;
-  reviewed_at: string | null; review_note: string; labour_marked: { present: number; half: number } }
+  reviewed_at: string | null; review_note: string; labour_marked: { present: number; half: number } | null }
 interface ProjSummary { site: string; project: string; reports: number; approved: number; manpower: number; activities: Record<string, number> }
 
 const STATUS: Record<string, { label: string; tone: "slate" | "amber" | "green" | "red" }> = {
@@ -149,7 +149,7 @@ export default function DailyProgress() {
             <div><div className="label">Quantities</div><ItemsTable rows={r.work_items} cols={[["activity", "Activity"], ["location", "Location"], ["qty", "Qty"], ["unit", "Unit"], ["planned_qty", "Planned"]]} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div><div className="label">Manpower ({r.manpower_total})</div><ItemsTable rows={r.manpower} cols={[["trade", "Trade"], ["count", "Count"]]} />
-                <p className="mt-1 text-xs text-slate-500">Attendance marked for this day: {r.labour_marked.present} present, {r.labour_marked.half} half day.</p></div>
+                <p className="mt-1 text-xs text-slate-500">Attendance marked for this day: {r.labour_marked?.present ?? 0} present, {r.labour_marked?.half ?? 0} half day.</p></div>
               <div><div className="label">Materials used</div><ItemsTable rows={r.materials_used} cols={[["item", "Material"], ["qty", "Qty"], ["unit", "Unit"]]} /></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2"><Detail label="Hold-ups / issues">{r.issues}</Detail><Detail label="Plan for tomorrow">{r.tomorrow_plan}</Detail></div>

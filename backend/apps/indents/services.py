@@ -55,7 +55,9 @@ def next_number(site) -> str:
 
 @transaction.atomic
 def raise_indent(user, validated: dict) -> Indent:
-    cfg = WorkflowSettings.load().cfg()
+    WorkflowSettings.load()
+    # numbers are per day across all sites: allocate them one at a time (the row lock is held until commit)
+    cfg = WorkflowSettings.objects.select_for_update().get(pk=1).cfg()
     probe = {"qty": float(validated["qty"]), "est_rate": _engine_value(validated.get("est_rate")),
              "raised_by": user.pk, "history": [{"action": "raise"}]}
     indent = Indent(**validated, raised_by=user, number=next_number(validated["site"]),

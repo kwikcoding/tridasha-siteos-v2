@@ -107,7 +107,8 @@ class SiteIsolation(SecurityBase):
                     leaks.append(f"{method.upper()} {url} → {r.status_code}")
             for a in self.ACTIONS.get(ep, []):
                 r = out.post(f"{url}{a}/", {"note": "x", "action": "approve", "date": TODAY, "amount": "1"}, format="json")
-                if r.status_code != 404:
+                # 404 = record not found for them; 403 = their role lacks that action at all (checked before any lookup)
+                if r.status_code not in (403, 404):
                     leaks.append(f"POST {url}{a}/ → {r.status_code}")
             lst = out.get(f"/api/{ep}/").json()
             rows = lst["results"] if isinstance(lst, dict) else lst

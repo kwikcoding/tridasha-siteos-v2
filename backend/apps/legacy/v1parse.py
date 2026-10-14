@@ -118,7 +118,7 @@ def row_keys(rows: list[dict]) -> list[str]:
     seen: dict[str, int] = {}
     keys = []
     for r in rows:
-        base = hashlib.sha1(json.dumps(r, sort_keys=True, default=str).encode()).hexdigest()[:40]
+        base = hashlib.sha1(json.dumps(r, sort_keys=True, default=str).encode(), usedforsecurity=False).hexdigest()[:40]
         n = seen.get(base, 0) + 1
         seen[base] = n
         keys.append(base if n == 1 else f"{base[:36]}#{n}")

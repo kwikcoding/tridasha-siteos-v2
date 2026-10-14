@@ -171,7 +171,14 @@ jobs:
         run: bandit -r backend/apps backend/config -x '*/tests/*,*/migrations/*' -ll -f txt 2>&1 | tee bandit.txt; echo "rc=${PIPESTATUS[0]}" >> bandit.txt
       - name: npm audit (production dependencies)
         shell: bash
-        run: cd frontend && npm install --no-audit --no-fund >/dev/null && (npm audit --omit=dev --audit-level=high 2>&1 | tee ../npm-audit.txt; echo "rc=${PIPESTATUS[0]}" >> ../npm-audit.txt)
+        working-directory: frontend
+        run: |
+          set +e
+          npm install --no-audit --no-fund > /dev/null 2>&1
+          npm audit --omit=dev --audit-level=high > ../npm-audit.txt 2>&1
+          echo "rc=$?" >> ../npm-audit.txt
+          cat ../npm-audit.txt
+          exit 0
       - name: No raw HTML in React, no secrets in the repo
         shell: bash
         run: |
