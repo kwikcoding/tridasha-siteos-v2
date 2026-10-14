@@ -10,6 +10,7 @@ from apps.audit.views import AuditViewSet
 from apps.legacy import views as legacy
 from apps.indents import views as ind
 from apps.materials import views as mat
+from apps.core import company
 from apps.compliance.views import DocumentViewSet, ObservationViewSet
 from apps.finance.views import ExpenseViewSet
 from apps.plant.views import EquipmentViewSet
@@ -47,6 +48,8 @@ api = [
     path("auth/password/", acc.change_password),
     path("auth/pending/", acc.pending),
     path("people/", acc.people),
+    path("company/", company.company),
+    path("company/logo/", company.company_logo),
     path("permissions/", acc.permission_catalogue),
     path("legacy/import/", legacy.import_v1),
     path("legacy/demo/", legacy.demo_data),

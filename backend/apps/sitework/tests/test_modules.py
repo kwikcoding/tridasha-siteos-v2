@@ -67,7 +67,8 @@ class ProjectsTests(ModulesBase):
                                                        "start_date": "2026-01-01", "end_date": "2027-06-30"}, 201)
         self.assertEqual(d["code"], "TB")
         self.call("store", "post", "/api/projects/", {"site": self.site.pk, "code": "X", "name": "X"}, 403)
-        self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TB", "name": "Dup"}, 400)
+        r = self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TB", "name": "Dup"}, 400)
+        self.assertIn("already used at this site", str(r))           # plain message, not the framework's
         self.call("pm", "post", "/api/projects/", {"site": self.site.pk, "code": "TC", "name": "Bad dates",
                                                    "start_date": "2027-01-01", "end_date": "2026-01-01"}, 400)
         self.call("pm", "patch", f"/api/projects/{d['id']}/", {"status": "completed"})
@@ -127,7 +128,8 @@ class DailyProgressTests(ModulesBase):
     def test_one_per_day_submit_approve_lock(self):
         d = self.call("engineer", "post", "/api/dpr/", self.body(), 201)
         self.assertEqual((d["status"], d["manpower_total"]), ("draft", 32))
-        self.call("engineer", "post", "/api/dpr/", self.body(), 400)                  # duplicate day
+        r = self.call("engineer", "post", "/api/dpr/", self.body(), 400)              # duplicate day
+        self.assertIn("already a daily report", str(r))
         self.call("engineer", "post", "/api/dpr/", self.body(date=(TODAY + timedelta(days=1)).isoformat()), 400)
         self.call("engineer", "post", "/api/dpr/", self.body(work_items=[{"activity": "x", "qty": -1}]), 400)
         self.call("store", "post", "/api/dpr/", self.body(project=None), 403)         # store can only view
@@ -334,3 +336,52 @@ class ReportsTests(ModulesBase):
 
 def rowsof(d):
     return d["results"] if isinstance(d, dict) else d
+
+
+class CompanyProfileTests(ModulesBase):
+    def test_read_by_all_change_by_admin_only_validated_and_audited(self):
+        self.assertEqual(self.call("store", "get", "/api/company/")["name"], "Tridasha")
+        self.call("pm", "patch", "/api/company/", {"legal_name": "X"}, 403)
+        self.call("admin", "patch", "/api/company/", {"gstin": "36ABCDE1234F1Z"}, 400)
+        self.call("admin", "patch", "/api/company/", {"pan": "ABCDE1234F", "gstin": "36ZZZZZ9999Z1Z5"}, 400)   # PAN mismatch
+        self.call("admin", "patch", "/api/company/", {"pincode": "02800"}, 400)
+        d = self.call("admin", "patch", "/api/company/", {"legal_name": "Tridasha Infra Projects Pvt Ltd",
+                                                          "gstin": "36abcde1234f1z5", "pan": "ABCDE1234F", "pincode": "502300",
+                                                          "financial_year_start": 4})
+        self.assertEqual((d["gstin"], d["updated_by_name"]), ("36ABCDE1234F1Z5", "Admin"))
+        self.assertTrue(AuditLog.objects.filter(action="settings.company").exists())
+        bad = SimpleUploadedFile("logo.svg", b"<svg/>", content_type="image/svg+xml")
+        self.call("admin", "post", "/api/company/logo/", {"file": bad}, 400, fmt="multipart")
+        self.call("pm", "post", "/api/company/logo/", {"file": SimpleUploadedFile("l.png", b"x")}, 403, fmt="multipart")
+        ok = SimpleUploadedFile("logo.png", b"\x89PNG\r\n\x1a\n", content_type="image/png")
+        self.assertTrue(self.call("admin", "post", "/api/company/logo/", {"file": ok}, 200, fmt="multipart")["has_logo"])
+        self.assertEqual(self.c("store").get("/api/company/logo/").status_code, 200)
+        r = self.c("qs").get("/api/reports/export/")
+        self.assertEqual(r.status_code, 200)
+
+
+class DemoDataTests(ModulesBase):
+    def test_demo_fills_every_module_once_and_can_be_switched_off(self):
+        from apps.compliance.models import Document, Observation
+        from apps.finance.models import Expense
+        from apps.indents.models import Indent
+        from apps.plant.models import Equipment
+        from apps.sitework.models import Attendance, DailyReport, Task, Worker
+        call_command("seed_demo", password=PW, verbosity=0)
+        counts = lambda: [m.objects.count() for m in (Project, Task, DailyReport, Worker, Attendance, Expense, Observation,  # noqa
+                                                       Document, Equipment, Indent)]
+        first = counts()
+        self.assertTrue(all(n > 0 for n in first), first)
+        demo = Site.objects.get(code="DEMO")
+        self.assertEqual(set(Expense.objects.filter(site=demo).values_list("status", flat=True)),
+                         {"draft", "submitted", "approved", "part_paid", "paid", "rejected"})
+        call_command("seed_demo", password=PW, verbosity=0)
+        self.assertEqual(counts(), first)                                         # running it again adds nothing
+        # demo records behave like real ones through the API
+        eng = User.objects.get(mobile="9000000001")
+        c = APIClient()
+        c.force_authenticate(eng)
+        self.assertEqual(c.get("/api/dpr/", {"site": demo.pk}).status_code, 200)
+        call_command("seed_demo", remove=True, verbosity=0)
+        self.assertFalse(User.objects.get(mobile="9000000001").is_active)
+        self.assertEqual(counts()[1], first[1])                                   # nothing deleted

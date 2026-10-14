@@ -55,7 +55,23 @@ Quality & Safety, Drawings & Documents and Reports are built, each with site iso
 audit log, Excel export and attachments. Uploaded files are kept under `backend/media/` (not in git) and are
 downloaded only through the API. See [VERIFICATION.md](VERIFICATION.md) for what each module enforces and the test results.
 
-Next: v1 data import, demo data for the new modules, production setup.
+## Demo stack (separate database)
+
+Try everything on realistic data without touching your working database:
+
+```bash
+DEMO_PASSWORD=choose-one docker compose --profile demo up -d --build
+```
+
+- App: http://localhost:5174 (API on :8001). It has its own Postgres container and volume (`siteos_demo`) and its own uploads folder (`backend/media-demo`).
+- Demo logins: mobiles 9000000001–9000000010, one per role, all with the password you chose. The admin login is the same one set in `.env`.
+- It holds two demo projects, plus tasks, daily reports, muster roll and attendance, bills at every stage, quality and safety items, drawings with revisions, equipment, and indents waiting at every step.
+- Stop it with `docker compose --profile demo down`. Add `-v` to drop the demo database too.
+- The normal `docker compose up` doesn't start any of this.
+
+**Settings → Company profile** (admin) holds the company name, GSTIN, PAN, address and logo. These appear in the header and on report exports.
+
+Next: v1 data import, production setup.
 
 ## Run it locally (Docker — easiest)
 

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, get } from "../api";
 import { DemoData, ImportV1, V1Archive } from "./DataTools";
 import type { WorkflowMeta } from "../types";
+import CompanyProfile from "./CompanyProfile";
 
 /** Workflow settings: optional steps on/off and the management approval limit. */
 function WorkflowSettings() {
@@ -77,6 +78,7 @@ function WorkflowSettings() {
 }
 
 const TABS = [
+  { key: "company", label: "Company profile" },
   { key: "workflow", label: "Workflow" },
   { key: "import", label: "Import from v1" },
   { key: "demo", label: "Demo data" },
@@ -85,7 +87,7 @@ const TABS = [
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") || "workflow";
+  const tab = params.get("tab") || "company";
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold text-navy">Settings</h1>
@@ -95,6 +97,7 @@ export default function Settings() {
             className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${tab === t.key ? "border-gold text-navy" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{t.label}</button>
         ))}
       </div>
+      {tab === "company" && <CompanyProfile />}
       {tab === "workflow" && <WorkflowSettings />}
       {tab === "import" && <ImportV1 />}
       {tab === "demo" && <DemoData />}

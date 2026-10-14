@@ -28,8 +28,9 @@ export default function Tasks() {
   const openId = Number(filters.params.get("id")) || null;
   const [editing, setEditing] = useState<Task | "new" | null>(null);
   const rows = rowsOf(list.data);
-  const current = rows?.find((t) => t.id === openId) ?? null;
-  const refresh = () => qc.invalidateQueries({ queryKey: ["tasks"] });
+  const one = useQuery({ queryKey: ["task", openId], queryFn: () => get<Task>(`/tasks/${openId}/`), enabled: !!openId });
+  const current = one.data ?? null;     // fetched on its own, so it stays open after it leaves the current tab
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["tasks"] }); qc.invalidateQueries({ queryKey: ["task"] }); qc.invalidateQueries({ queryKey: ["pending"] }); };
   const open = (id: number | null) => { const n = new URLSearchParams(filters.params); if (id) n.set("id", String(id)); else n.delete("id"); filters.setParams(n, { replace: true }); };
   const others = (rows ?? []).filter((t) => t.id !== (editing !== "new" ? editing?.id : 0)).map((t) => ({ value: String(t.id), label: t.title }));
 

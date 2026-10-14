@@ -1,5 +1,97 @@
 # Tridasha SiteOS v2 — functional & business-logic verification
 
+## Phase 2 — browser verification of every module (14 Oct 2026, PR #8, branch `verify-phase-2`)
+
+**Scope:**
+- PR #7 merged after green CI and a conflict-free check.
+- Demo data for all modules, plus Settings → Company profile.
+- Browser tests for every module and role.
+
+**Environment:** GitHub Actions with a throw-away PostgreSQL 16 database. The demo data is loaded by `seed_demo`, the production build of the React app is served by `vite preview`, and Chromium is driven by Playwright. Nothing ran against the live v1 site, the production VPS or the laptop's main database.
+
+### Test runs (final commit `ddc13a4`)
+
+| Suite | Tests | Result |
+|---|---|---|
+| Backend: engine, API, permissions and database (`manage.py test apps`) | 100 | passed |
+| Browser: module flows on demo data (`e2e/test_modules_ui.py`) | 13 | passed |
+| Browser: 10 roles × menu and 13 direct URLs; indent raise and stock check; daily report across 3 roles; phone width (`e2e/test_ui_roles.py`) | 13 | passed |
+| Frontend type-check and production build | — | passed |
+| Migrations match the models (`makemigrations --check`) | — | passed |
+
+The full suite passed on consecutive runs of the same commit (stability check, see "Defects found" #4).
+
+### What the browser tests do (signed in as the role that does the work)
+
+| Flow | Checked in the browser |
+|---|---|
+| Company profile | Admin saves the profile. An invalid GSTIN shows a message; a valid GSTIN and PAN save. Logo upload. The change appears in the audit log. The Project Head is refused Settings. |
+| Sites & projects | Project Head adds a project. A duplicate code shows a plain message. The Store Keeper is refused. |
+| Tasks | The assignee can't complete a task whose prerequisite is open (message shown). The engineer completes the prerequisite, then the supervisor completes theirs. The overdue list clears. Excel export. |
+| Daily progress | Send back without a note is refused, then approve. Project progress summary. Excel export. A new report goes engineer → store keeper (read only, no Approve button) → project head approves. |
+| Labour & attendance | Supervisor marks a day (no Approve button for them). Project Head approves it and the day is locked. Wages summary. Excel export. |
+| Expenses & bills | Accountant enters a bill and submits it, and can't approve their own. Management approving above the bill is refused, then approves; management has no payment button. Rejection needs a reason. Overpayment is refused, then a part payment. A repeated UTR is refused. Then fully paid. Excel export. The Safety Officer is refused. |
+| Quality & safety | Closing an NCR without evidence is refused. The engineer can't close it but uploads evidence. The Safety Officer downloads the evidence and closes it. Excel export. |
+| Drawings & documents | A new revision is uploaded and the old revision downloads byte-for-byte unchanged. The engineer has no Archive button. QS is refused. |
+| Plant & equipment | Allocate to a site. Log a breakdown → Breakdown. Back in service. Utilisation report. |
+| Indents step 11 | An invoice that doesn't match PO × GRN is refused until a reason is given. |
+| Reports | Management sees all sections and the project table, and downloads Excel. QS doesn't see Labour. |
+| Dashboard | Management sees bill and quality cards; Safety sees quality but no finance cards. |
+| Materials | Store Keeper sees the demo catalogue and downloads Excel. Safety is refused. |
+
+Every Excel download is checked to be a real .xlsx file (zip header, non-empty).
+
+### Defects found in this phase and fixed
+
+| # | Defect | Fix | Regression test |
+|---|---|---|---|
+| 1 | Duplicate project code showed "The fields site, code must make a unique set". The same could happen for document numbers and daily reports, because the framework's uniqueness check ran before ours. | Our plain-language check runs instead | `test_create_edit_and_permissions`, `test_one_per_day_submit_approve_lock`, browser project test |
+| 2 | A task window closed by itself when the task left the current tab (for example on "Mark done" from "Assigned to me") | The window loads the task on its own | browser task test |
+| 3 | The pop-up ✕ was named "Close", the same as the Close action on quality items (ambiguous for screen readers) | Renamed "Close window". Windows are marked as dialogs and Esc closes them | browser quality test |
+| 4 | Test reliability: one browser test sometimes clicked Log out before a window had opened. Also, "button not shown" checks could pass before the window loaded. | Tests wait for the window, then close it | consecutive green runs |
+
+### Module-wise final status
+
+**Passed** = UI flows clicked in the browser, plus business rules, API, database and permissions tested.
+**Partially tested** = rules, API and permissions tested, and the page and access checked in the browser, but not every action clicked in the browser.
+**Pending** = not built, or can't be tested here.
+
+| Module | Status | Evidence | Open items |
+|---|---|---|---|
+| Dashboard | **Passed** | role cards (browser), counts (API) | — |
+| Reports | **Passed** | sections by role and Excel (browser), filters and permissions (API) | PDF export pending |
+| Sites & Projects | **Passed** | add and duplicate (browser), rules (API) | — |
+| Tasks & Schedule | **Passed** | dependency and completion (browser), assignment rules (API) | Gantt view pending |
+| Daily Progress | **Passed** | write, submit, send back, approve (browser) | — |
+| Labour & Attendance | **Passed** | mark, approve, lock, summary (browser), wages and overtime rules (API) | — |
+| Materials & Stock | **Partially tested** | catalogue and export (browser), stock ledger, imports, no negative stock (API) | stock posting and Excel upload not clicked in the browser; units are free text |
+| Indents & Purchase | **Passed** | raise and stock check, step 11 match (browser), steps 01–12 (API) | one invoice per indent |
+| Plant & Equipment | **Passed** | allocate, breakdown, back in service, utilisation (browser) | — |
+| Expenses & Bills | **Passed** | full approve and pay controls, rejection (browser) | — |
+| Quality & Safety | **Passed** | evidence-gated close, upload and download (browser) | — |
+| Drawings & Documents | **Passed** | revision upload, old file intact, archive rights (browser) | — |
+| Team & Roles | **Partially tested** | 10 roles × menus and URLs, audit log (browser), staff, roles, matrix, deactivation (API) | creating staff and editing roles not clicked in the browser; department-based data scoping pending |
+| Settings | **Passed** | company profile with validation, logo and audit (browser), workflow settings (API) | — |
+
+**Failed:** none at the final commit.
+
+### Unresolved before production approval
+
+1. **Laptop click-through:** run the demo stack (README → "Demo stack") and click through once.
+2. **Alerts:** WhatsApp, SMS and email delivery are untested (needs provider accounts). In-app notifications are tested.
+3. **v1 data import:** waiting for the v1 Google Sheets as .xlsx.
+4. **Production setup:** HTTPS behind the existing Traefik, managed secrets, backups, media storage and Celery workers. This needs your approval, and nothing has been deployed.
+5. **Smaller gaps:**
+   - PDF export.
+   - A Gantt view for tasks.
+   - A unit-of-measure master.
+   - More than one invoice per indent.
+   - Department-based data scoping.
+   - Browser clicks for staff creation and stock posting.
+6. **Load testing:** not done.
+
+---
+
 ## Update — remaining modules built (13 Oct 2026, PR #7, branch `modules`)
 
 All 14 modules now exist in v2. Results come from CI on PostgreSQL 16 (throw-away databases); the last run passed all three jobs. Nothing was run against the live v1 site or the laptop database.

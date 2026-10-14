@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { get, post } from "../api";
 import { useAuth } from "../auth";
+import { useCompany } from "../pages/CompanyProfile";
 import type { Notification, Page, Pending } from "../types";
 
 function Bell() {
@@ -106,6 +107,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function Layout() {
   const { me, logout } = useAuth();
+  const company = useCompany();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -114,8 +116,8 @@ export default function Layout() {
       {/* sidebar — fixed on desktop, slide-over on phones */}
       <aside className={`fixed inset-y-0 left-0 z-30 w-64 transform bg-navy transition lg:static lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <Link to="/" className="flex items-center gap-2 border-b border-white/10 px-5 py-4 font-semibold tracking-tight text-white" onClick={() => setOpen(false)}>
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gold text-sm font-bold">T</span>
-          Tridasha SiteOS
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gold text-sm font-bold">{(company.data?.name || "T").slice(0, 1)}</span>
+          <span className="leading-tight">{company.data?.name || "Tridasha"} SiteOS</span>
         </Link>
         <Sidebar onNavigate={() => setOpen(false)} />
       </aside>

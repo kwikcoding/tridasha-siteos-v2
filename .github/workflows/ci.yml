@@ -115,7 +115,9 @@ jobs:
           cd backend && python manage.py migrate --noinput
       - name: Test logins (CI database only)
         working-directory: backend
-        run: python manage.py shell < ../e2e/setup_users.py
+        run: |
+          python manage.py shell < ../e2e/setup_users.py
+          DEMO_PASSWORD="$E2E_PASSWORD" python manage.py seed_demo
       - name: Serve
         shell: bash
         run: |
@@ -131,8 +133,9 @@ jobs:
         shell: bash
         run: |
           grep -E "PASSED|FAILED|ERROR" e2e.log > e2e-summary.log || true
+          grep -E "^e2e/.*:[0-9]+|waiting for|Error:|intercepts pointer|assert " e2e.log | head -60 > e2e-where.log || true
           tail -c 5000 django.log > django-tail.log 2>/dev/null || echo "no django.log" > django-tail.log
-          for f in e2e-summary.log django-tail.log e2e.log vite.log; do
+          for f in e2e-summary.log e2e-where.log django-tail.log e2e.log vite.log; do
             [ -f $f ] || continue
             python - "$f" <<'PY'
           import sys

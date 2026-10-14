@@ -207,7 +207,11 @@ def export(request):
     wb = Workbook()
     ws = wb.active
     ws.title = "Summary"
-    ws.append([f"Tridasha SiteOS report {data['from']:%d %b %Y} – {data['to']:%d %b %Y}"])
+    from apps.core.models import CompanyProfile
+    co = CompanyProfile.load()
+    ws.append([f"{co.legal_name or co.name} — SiteOS report {data['from']:%d %b %Y} – {data['to']:%d %b %Y}"])
+    if co.gstin:
+        ws.append([f"GSTIN {co.gstin}"])
     ws["A1"].font = Font(bold=True, size=13)
     for sec in data["sections"]:
         ws.append([])
