@@ -46,6 +46,7 @@ def act(page: Page, button: str, fields: dict | None = None, exact=True):
 
 def open_row(page: Page, text: str):
     page.locator("table tbody tr", has_text=text).first.click()
+    expect(page.locator("[role=dialog]")).to_be_visible()      # so "button not shown" checks aren't vacuous
 
 
 def chip(page: Page, text: str):

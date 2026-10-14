@@ -137,6 +137,7 @@ def test_daily_report_written_submitted_and_approved_in_the_browser(page: Page):
 
     sign_in(page, "store")                      # store keeper can read reports but not approve
     page.goto(url)
+    expect(page.locator("[role=dialog]")).to_be_visible()
     expect(page.get_by_text("E2E: plinth beam shuttering").first).to_be_visible()
     assert not page.get_by_role("button", name="Approve", exact=True).is_visible()
     sign_out(page)
