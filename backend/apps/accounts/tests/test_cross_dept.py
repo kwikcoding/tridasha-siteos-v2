@@ -101,7 +101,9 @@ class CrossDepartment(TestCase):
 
     def test_matrix_change_applies_on_the_next_request_and_is_audited(self):
         from apps.audit.models import AuditLog
-        store = self.c("store")
+        store = APIClient()                     # a real signed-in session: the user is loaded fresh on every request
+        self.assertEqual(store.post("/api/auth/login/", {"mobile": self.U["store"].mobile, "password": PW},
+                                    format="json").status_code, 200)
         self.assertEqual(store.get("/api/reports/summary/").status_code, 403)
         role = Role.objects.get(key="store")
         perms = sorted(set(role.permissions) | {"reports.view"})
