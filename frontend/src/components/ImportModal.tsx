@@ -13,7 +13,7 @@ export function Modal({ title, children, onClose, wide }: { title: string; child
       <div className={`card max-h-[90vh] w-full overflow-y-auto p-6 ${wide ? "max-w-3xl" : "max-w-lg"}`} onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-navy">{title}</h2>
-          <button className="text-slate-400 hover:text-slate-700" onClick={onClose} aria-label="Close">✕</button>
+          <button className="text-slate-400 hover:text-slate-700" onClick={onClose} aria-label="Close window">✕</button>
         </div>
         {children}
       </div>

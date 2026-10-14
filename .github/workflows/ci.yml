@@ -115,7 +115,9 @@ jobs:
           cd backend && python manage.py migrate --noinput
       - name: Test logins (CI database only)
         working-directory: backend
-        run: python manage.py shell < ../e2e/setup_users.py
+        run: |
+          python manage.py shell < ../e2e/setup_users.py
+          DEMO_PASSWORD="$E2E_PASSWORD" python manage.py seed_demo
       - name: Serve
         shell: bash
         run: |

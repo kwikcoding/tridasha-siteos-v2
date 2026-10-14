@@ -92,7 +92,7 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = env("MEDIA_ROOT", str(BASE_DIR / "media"))   # the demo stack keeps its files apart
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Sessions + CSRF: the React app is served from the same domain (Caddy routes /api to Django),

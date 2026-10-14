@@ -60,9 +60,11 @@ class Command(BaseCommand):
             site, _ = Site.objects.get_or_create(code=DEMO_SITE[0], defaults={"name": DEMO_SITE[1]})
             users = self.users(site, password)
             self.materials(site, users["store"])
+            self.projects = self.make_projects(site, users)
             n = self.indents(site, users)
+            m = self.modules(site, users)
         self.stdout.write(self.style.SUCCESS(f"Demo ready: {len(users)} logins (mobiles {MOBILE.format('01')}–{MOBILE.format('10')}), "
-                                             f"{n} new demo indents on site DEMO."))
+                                             f"{n} new demo indents on site DEMO; {m}."))
         for suffix, key, name, *_ in DEMO_USERS:
             self.stdout.write(f"  {MOBILE.format(suffix)}  {name}")
 
@@ -102,10 +104,14 @@ class Command(BaseCommand):
             return 0          # already seeded — run --remove first for a fresh set
         mats = {m.code: m for m in Material.objects.filter(code__startswith="DEMO-")}
 
+        n_ind = [0]
+
         def new(code, qty, purpose, by="engineer"):
+            n_ind[0] += 1
             m = mats[code]
             data = {"site": site, "material": m, "item": m.name, "item_code": m.code, "unit": m.unit, "qty": qty,
                     "est_rate": m.std_rate, "priority": "normal", "purpose": f"[DEMO] {purpose}",
+                    "project": self.projects["TA" if "Tower A" in purpose or n_ind[0] % 2 == 0 else "CH"],
                     "need_by": timezone.localdate() + timedelta(days=10)}
             return services.raise_indent(U[by], data)
 
@@ -170,6 +176,159 @@ class Command(BaseCommand):
             walk(i, steps)
             made += 1
         return made
+
+    def make_projects(self, site, U):
+        from apps.sites.models import Project
+        out = {}
+        for code, name, budget, days in [("TA", "[Demo] Tower A — G+14 residential", 185000000, 540),
+                                         ("CH", "[Demo] Clubhouse & amenities", 42000000, 300)]:
+            p, _ = Project.objects.get_or_create(site=site, code=code, defaults=dict(
+                name=name, status="active", budget=budget, head=U["pm"],
+                start_date=timezone.localdate() - timedelta(days=120), end_date=timezone.localdate() + timedelta(days=days)))
+            out[code] = p
+        return out
+
+    def modules(self, site, U):
+        """Tasks, daily reports, labour, bills, quality & safety, documents and equipment — once per demo site."""
+        from decimal import Decimal
+
+        from django.contrib.contenttypes.models import ContentType
+        from django.core.files.base import ContentFile
+
+        from apps.compliance.models import Document, DocumentRevision, Observation
+        from apps.core.models import Attachment
+        from apps.finance.models import Expense, ExpensePayment
+        from apps.plant.models import Allocation, Equipment, MaintenanceLog
+        from apps.sitework.models import Attendance, DailyReport, Task, Worker
+        if Task.objects.filter(site=site, title__startswith="[Demo]").exists():
+            return "other modules already seeded"
+        today = timezone.localdate()
+        ta, ch = self.projects["TA"], self.projects["CH"]
+        d = lambda n: today - timedelta(days=n)                      # noqa: E731
+
+        # tasks (one overdue, one blocked, one waiting on another)
+        t1 = Task.objects.create(site=site, project=ta, title="[Demo] L5 slab reinforcement check", assignee=U["engineer"],
+                                 priority="high", status="in_progress", progress=60, start_date=d(3), due_date=d(1),
+                                 created_by=U["pm"])
+        Task.objects.create(site=site, project=ta, title="[Demo] L5 slab concrete pour", assignee=U["supervisor"],
+                            priority="high", status="todo", start_date=today, due_date=today + timedelta(days=2),
+                            depends_on=t1, created_by=U["pm"])
+        Task.objects.create(site=site, project=ch, title="[Demo] Clubhouse footing excavation", assignee=U["supervisor"],
+                            status="blocked", progress=30, due_date=today + timedelta(days=5), created_by=U["pm"])
+        Task.objects.create(site=site, project=ta, title="[Demo] Shuttering material reconciliation", assignee=U["engineer"],
+                            status="done", progress=100, due_date=d(4), completed_at=timezone.now() - timedelta(days=4),
+                            created_by=U["pm"])
+        Task.objects.create(site=site, title="[Demo] Monthly safety audit", assignee=U["safety"], priority="normal",
+                            due_date=today + timedelta(days=10), created_by=U["pm"])
+
+        # muster roll + attendance for the last 6 days (older days approved)
+        crew = [("Ramesh K", "Mason", "Sai Labour Contractors", 950, 125), ("Suresh P", "Mason", "Sai Labour Contractors", 950, 125),
+                ("Venkat R", "Bar bender", "Sai Labour Contractors", 900, 115), ("Lakshmi D", "Helper", "Sai Labour Contractors", 650, 85),
+                ("Mahesh G", "Carpenter", "Sri Durga Works", 1000, 130), ("Anjali S", "Helper", "Sri Durga Works", 650, 85),
+                ("Raju M", "Electrician", "", 1100, 140), ("Kiran T", "Helper", "", 650, 85)]
+        workers = [Worker.objects.create(site=site, name=f"[Demo] {n}", worker_code=f"DW-{i + 1:02d}", trade=t, contractor=c,
+                                         daily_wage=Decimal(w), ot_rate=Decimal(o), created_by=U["supervisor"])
+                   for i, (n, t, c, w, o) in enumerate(crew)]
+        pattern = ["present", "present", "present", "half", "present", "absent", "present", "present"]
+        for day in range(1, 7):
+            for i, w in enumerate(workers):
+                st = pattern[(i + day) % len(pattern)]
+                a = Attendance(worker=w, site=site, project=ta if i < 5 else ch, date=d(day), status=st,
+                               ot_hours=Decimal("2") if st == "present" and i % 3 == 0 else Decimal("0"),
+                               created_by=U["supervisor"], approved=day >= 3, approved_by=U["pm"] if day >= 3 else None)
+                a.compute_wage()
+                a.save()
+
+        # daily progress reports: approved, approved, waiting approval, draft today
+        for n, status in [(3, "approved"), (2, "approved"), (1, "submitted"), (0, "draft")]:
+            DailyReport.objects.create(
+                site=site, project=ta, date=d(n), weather="cloudy" if n % 2 else "clear", status=status,
+                summary=f"[Demo] Tower A: L5 slab works day {4 - n} — rebar tying and shuttering",
+                work_items=[{"activity": "Slab shuttering", "location": "Tower A L5", "qty": 180 + 20 * n, "unit": "sqm"},
+                            {"activity": "Rebar tying", "location": "Tower A L5", "qty": 2.4 + n / 2, "unit": "MT"}],
+                manpower=[{"trade": "Mason", "count": 12}, {"trade": "Bar bender", "count": 6}, {"trade": "Helper", "count": 18}],
+                materials_used=[{"item": "Binding wire", "qty": 35, "unit": "kg"}],
+                issues="Crane down for 2 hours" if n == 2 else "", tomorrow_plan="Continue L5 slab",
+                created_by=U["engineer"], submitted_at=timezone.now() if status != "draft" else None,
+                reviewed_by=U["pm"] if status == "approved" else None,
+                reviewed_at=timezone.now() if status == "approved" else None)
+
+        # bills at every stage
+        def bill(payee, no, cat, amt, gst, status, **kw):
+            e = Expense.objects.create(site=site, project=kw.pop("project", ta), date=d(kw.pop("ago", 5)), category=cat,
+                                       description=kw.pop("desc", f"[Demo] {cat}"), payee=payee, bill_no=no,
+                                       amount=Decimal(amt), gst=Decimal(gst), status=status, created_by=U["accounts"], **kw)
+            if status in ("approved", "part_paid", "paid"):
+                e.approved_amount, e.approved_by, e.approved_at = e.total, U["management"], timezone.now()
+                e.save()
+            return e
+        bill("[Demo] Sai Labour Contractors", "SLC/24", "Labour contractor bill", 148000, 0, "draft", ago=1)
+        bill("[Demo] Balaji Earthmovers", "BE-118", "Equipment hire", 60000, 10800, "submitted",
+             desc="[Demo] JCB 3DX — 6 days", project=ch, submitted_at=timezone.now())
+        bill("[Demo] Telangana Power", "TSPDCL-0925", "Utilities", 38500, 0, "approved")
+        part = bill("[Demo] Sri Durga Works", "SDW-07", "Labour contractor bill", 92000, 0, "part_paid", ago=12)
+        ExpensePayment.objects.create(expense=part, date=d(8), amount=Decimal("50000"), mode="NEFT", ref="DEMO-UTR-1", by=U["accounts"])
+        part.paid_total = Decimal("50000")
+        part.save()
+        paid = bill("[Demo] HP Fuel Station", "HP-3321", "Fuel", 18400, 0, "paid", ago=15)
+        ExpensePayment.objects.create(expense=paid, date=d(14), amount=paid.total, mode="UPI", ref="DEMO-UTR-2", by=U["accounts"])
+        paid.paid_total = paid.total
+        paid.save()
+        bill("[Demo] Quick Movers", "QM-11", "Transport", 7500, 1350, "rejected", review_note="Duplicate of QM-10", ago=9)
+
+        # quality & safety
+        def obs(kind, ref, title, sev, status, **kw):
+            return Observation.objects.create(site=site, project=kw.pop("project", ta), kind=kind, ref_no=ref, title=title,
+                                              severity=sev, status=status, date=d(kw.pop("ago", 2)),
+                                              created_by=kw.pop("by", U["safety"]), **kw)
+        obs("safety", "DEMO-SO-001", "[Demo] Missing guard rail at L5 slab edge", "high", "open", assigned_to=U["supervisor"],
+            due_date=d(-1), location="Tower A L5 east edge")
+        ncr = obs("ncr", "DEMO-NCR-001", "[Demo] Honeycombing in column C4", "high", "in_progress", assigned_to=U["engineer"],
+                  due_date=today + timedelta(days=3), corrective_action="Chip out loose concrete, grout with GP2", by=U["engineer"],
+                  location="Tower A L4 grid C4")
+        done = obs("inspection", "DEMO-QI-001", "[Demo] Pre-pour inspection L4 slab", "low", "closed", ago=8,
+                   corrective_action="Cover blocks added", closure_note="Re-inspected and approved",
+                   closed_by=U["safety"], closed_at=timezone.now() - timedelta(days=7), by=U["engineer"])
+        obs("incident", "DEMO-INC-001", "[Demo] Minor hand injury — rebar cutting", "medium", "open", ago=1, project=ta,
+            assigned_to=U["supervisor"], location="Rebar yard")
+        obs("near_miss", "DEMO-NM-001", "[Demo] Shuttering plank fell from L5", "medium", "open", ago=3, project=ch)
+        ct = ContentType.objects.get_for_model(Observation)
+        for o, name in [(done, "pre-pour-checklist.pdf"), (ncr, "c4-before-repair.jpg")]:
+            a = Attachment(content_type=ct, object_id=o.pk, name=name, size=24, uploaded_by=U["engineer"],
+                           purpose="evidence" if o is done else "finding")
+            a.file.save(name, ContentFile(b"%PDF-1.4 demo file" if name.endswith(".pdf") else b"\xff\xd8\xff demo"), save=False)
+            a.size = a.file.size
+            a.save()
+
+        # drawings & documents with revisions
+        for num, title, cat, revs in [("DEMO-TA-STR-101", "[Demo] Typical floor slab reinforcement", "drawing", ["R0", "R1"]),
+                                      ("DEMO-TA-ARC-001", "[Demo] Tower A floor plan", "drawing", ["R0"]),
+                                      ("DEMO-MS-005", "[Demo] Method statement — slab concreting", "method", ["R0"])]:
+            doc = Document.objects.create(site=site, project=ta, category=cat, number=num, title=title,
+                                          discipline="Structural" if "STR" in num else "Architectural", created_by=U["engineer"])
+            for i, rev in enumerate(revs):
+                r = DocumentRevision(document=doc, rev=rev, file_name=f"{num}-{rev}.pdf", note="First issue" if i == 0 else "Beam B4 deepened",
+                                     status="Superseded" if i < len(revs) - 1 else "For construction", uploaded_by=U["engineer"])
+                r.file.save(f"{num}-{rev}.pdf", ContentFile(f"%PDF-1.4 {num} {rev}\n".encode()), save=False)
+                r.size = r.file.size
+                r.save()
+
+        # plant & equipment
+        mixer = Equipment.objects.create(code="DEMO-MX-01", name="[Demo] Concrete mixer 10/7", category="Mixer", ownership="owned",
+                                         status="in_use", site=site, project=ta, service_every_days=30,
+                                         next_service_due=today + timedelta(days=12), created_by=U["store"])
+        Allocation.objects.create(equipment=mixer, site=site, project=ta, from_date=d(20), by=U["store"])
+        jcb = Equipment.objects.create(code="DEMO-JCB-01", name="[Demo] JCB 3DX backhoe", category="Excavator", ownership="hired",
+                                       hire_rate=Decimal("6500"), supplier="[Demo] Balaji Earthmovers", status="breakdown",
+                                       site=site, project=ch, created_by=U["store"])
+        Allocation.objects.create(equipment=jcb, site=site, project=ch, from_date=d(9), by=U["store"])
+        MaintenanceLog.objects.create(equipment=jcb, date=d(1), kind="breakdown", description="[Demo] Hydraulic hose burst",
+                                      cost=Decimal("4800"), downtime_hours=Decimal("7"), by=U["store"])
+        Equipment.objects.create(code="DEMO-DG-01", name="[Demo] 62.5 kVA DG set", category="DG set", ownership="owned",
+                                 status="available", service_every_days=45, next_service_due=d(2), created_by=U["store"])
+        Equipment.objects.create(code="DEMO-VIB-01", name="[Demo] Needle vibrator", category="Vibrator", ownership="owned",
+                                 status="available", created_by=U["store"])
+        return "tasks, daily reports, labour, bills, quality & safety, documents and equipment added"
 
     def remove(self):
         with transaction.atomic():
