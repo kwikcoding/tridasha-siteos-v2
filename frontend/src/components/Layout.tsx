@@ -53,10 +53,22 @@ function Bell() {
 
 /** Sidebar: the same groups as v1. Only modules that exist in v2 and that the person may view are shown. */
 const NAV: { group: string; items: { module: string; label: string; to: string; admin?: boolean }[] }[] = [
-  { group: "Overview", items: [{ module: "dashboard", label: "Dashboard", to: "/" }] },
+  { group: "Overview", items: [{ module: "dashboard", label: "Dashboard", to: "/" }, { module: "reports", label: "Reports", to: "/reports" }] },
+  { group: "Site work", items: [
+    { module: "sites", label: "Sites & Projects", to: "/sites" },
+    { module: "tasks", label: "Tasks & Schedule", to: "/tasks" },
+    { module: "dpr", label: "Daily Progress", to: "/dpr" },
+    { module: "labour", label: "Labour & Attendance", to: "/labour" },
+  ] },
   { group: "Resources", items: [
     { module: "materials", label: "Materials & Stock", to: "/materials" },
     { module: "indents", label: "Indents & Purchase", to: "/indents" },
+    { module: "equipment", label: "Plant & Equipment", to: "/equipment" },
+  ] },
+  { group: "Finance", items: [{ module: "expenses", label: "Expenses & Bills", to: "/expenses" }] },
+  { group: "Compliance", items: [
+    { module: "quality", label: "Quality & Safety", to: "/quality" },
+    { module: "docs", label: "Drawings & Documents", to: "/docs" },
   ] },
   { group: "Administration", items: [
     { module: "team", label: "Team & Roles", to: "/team" },

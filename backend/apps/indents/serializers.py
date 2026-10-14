@@ -17,6 +17,7 @@ class EventSerializer(serializers.ModelSerializer):
 class IndentListSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
     raised_by_name = serializers.CharField(source="raised_by.name", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True, default="")
     waiting_with = serializers.SerializerMethodField()
     purchase_with = serializers.SerializerMethodField()
     stage_label = serializers.SerializerMethodField()
@@ -24,7 +25,7 @@ class IndentListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Indent
-        fields = ["id", "number", "site", "site_name", "material", "item", "item_code", "unit", "qty", "approved_qty", "need_by",
+        fields = ["id", "number", "site", "site_name", "project", "project_name", "material", "item", "item_code", "unit", "qty", "approved_qty", "need_by",
                   "priority", "status", "stage", "stage_label", "pstatus", "pstage", "waiting_with", "purchase_with",
                   "raised_by", "raised_by_name", "po_no", "po_vendor", "po_expected", "stage_entered_at",
                   "allowed_actions", "created_at", "updated_at"]
@@ -125,10 +126,18 @@ class IndentDetailSerializer(IndentListSerializer):
 class IndentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Indent
-        fields = ["site", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose", "est_rate"]
+        fields = ["site", "project", "material", "item", "item_code", "unit", "qty", "need_by", "priority", "purpose",
+                  "est_rate"]
         extra_kwargs = {"item": {"required": False, "allow_blank": True}}
 
     def validate(self, attrs):
+        site = attrs.get("site", getattr(self.instance, "site", None))
+        project = attrs.get("project", getattr(self.instance, "project", None))
+        if project is not None:
+            if site is not None and project.site_id != site.pk:
+                raise serializers.ValidationError({"project": "This project belongs to another site."})
+            if "project" in attrs and not project.is_open:
+                raise serializers.ValidationError({"project": "This project is completed."})
         m = attrs.get("material")
         if m:
             if not m.active:

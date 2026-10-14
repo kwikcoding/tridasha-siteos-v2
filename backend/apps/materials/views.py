@@ -177,8 +177,14 @@ class StockViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gene
             material = Material.objects.get(pk=v["material"])
         except Material.DoesNotExist:
             raise ValidationError({"material": "Unknown material."})
+        project = None
+        if v.get("project"):
+            from apps.sites.models import Project
+            project = Project.objects.filter(pk=v["project"]).first()
+            if project is None:
+                raise ValidationError({"project": "Unknown project."})
         try:
-            e = services.post_entry(site=site, material=material, kind=v["kind"], qty=v["qty"], by=request.user,
+            e = services.post_entry(site=site, material=material, kind=v["kind"], qty=v["qty"], by=request.user, project=project,
                                     source=v["source"], date=v.get("date"), rate=v.get("rate"), ref=v.get("ref", ""),
                                     party=v.get("party", ""), note=v.get("note", ""))
         except services.StockError as err:

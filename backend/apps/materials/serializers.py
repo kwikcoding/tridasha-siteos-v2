@@ -42,13 +42,14 @@ class StockEntrySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StockEntry
-        fields = ["id", "site", "site_name", "material", "material_code", "material_name", "unit", "date", "kind", "qty",
+        fields = ["id", "site", "site_name", "project", "material", "material_code", "material_name", "unit", "date", "kind", "qty",
                   "rate", "source", "indent", "indent_number", "ref", "party", "note", "by_name", "created_at"]
         read_only_fields = ["indent", "created_at"]
 
 
 class StockEntryCreateSerializer(serializers.Serializer):
     site = serializers.IntegerField()
+    project = serializers.IntegerField(required=False, allow_null=True)
     material = serializers.IntegerField()
     kind = serializers.ChoiceField(choices=["IN", "OUT", "ADJ"])
     qty = serializers.DecimalField(max_digits=14, decimal_places=3)

@@ -32,10 +32,10 @@ def _people_at(stage: str, indent: Indent):
     return out
 
 
-def notify(user, kind, title, body="", indent=None, dedupe_key=""):
+def notify(user, kind, title, body="", indent=None, dedupe_key="", link=""):
     if dedupe_key and Notification.objects.filter(user=user, dedupe_key=dedupe_key).exists():
         return None
-    link = f"/indents/{indent.pk}" if indent else ""
+    link = f"/indents/{indent.pk}" if indent else link
     n = Notification.objects.create(user=user, kind=kind, title=title, body=body, indent=indent, link=link,
                                     dedupe_key=dedupe_key)
     text = f"{title}\n{body}\n{settings.APP_URL}{link}".strip()

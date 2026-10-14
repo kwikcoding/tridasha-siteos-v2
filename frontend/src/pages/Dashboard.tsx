@@ -35,6 +35,23 @@ export default function Dashboard() {
         {can("indents") && <Stat label="Raised by you (open)" value={p?.raised_open ?? "—"} to="/indents?tab=raised" />}
       </div>
 
+      {(() => {
+        const cards: [string, number | undefined, string, boolean?][] = [
+          ["Tasks assigned to you", p?.tasks_mine, "/tasks?tab=mine"], ["Overdue tasks", p?.tasks_overdue, "/tasks?tab=overdue", true],
+          ["Daily reports to approve", p?.dpr_to_approve, "/dpr?tab=waiting"], ["Daily reports today", p?.dpr_today, "/dpr"],
+          ["Workers present today", p?.present_today, "/labour"], ["Bills to approve", p?.bills_to_approve, "/expenses?tab=submitted"],
+          ["Bills to pay", p?.bills_to_pay, "/expenses?tab=approved,part_paid"], ["Open quality & safety items", p?.observations_open, "/quality"],
+          ["Q&S items assigned to you", p?.observations_mine, "/quality"], ["Equipment service due", p?.equipment_service_due, "/equipment", true],
+        ];
+        const shown = cards.filter(([, v]) => v !== undefined);
+        if (!shown.length) return null;
+        return (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
+            {shown.map(([label, v, to, warn]) => <Stat key={label} label={label} value={v ?? "—"} to={to} tone={v && warn ? "text-red-600" : v ? "text-gold-600" : undefined} />)}
+          </div>
+        );
+      })()}
+
       {can("indents") && (
         <section className="card">
           <div className="flex items-center justify-between border-b px-5 py-3">

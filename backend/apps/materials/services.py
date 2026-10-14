@@ -19,7 +19,7 @@ def _fmt(q: Decimal) -> str:
 
 @transaction.atomic
 def post_entry(*, site, material, kind, qty, by, source="manual", date=None, rate=None, indent=None, ref="",
-               party="", note="") -> StockEntry:
+               party="", note="", project=None) -> StockEntry:
     qty = Decimal(str(qty))
     if kind not in (StockEntry.IN, StockEntry.OUT, StockEntry.ADJ):
         raise StockError("Unknown entry type.")
@@ -34,7 +34,9 @@ def post_entry(*, site, material, kind, qty, by, source="manual", date=None, rat
         take = qty if kind == StockEntry.OUT else -qty
         if take > have:
             raise StockError(f"Only {_fmt(have)} {material.unit or ''} of {material.name} in stock at {site.name}.".replace("  ", " "))
-    return StockEntry.objects.create(site=site, material=material, kind=kind, qty=qty, by=by, source=source,
+    if project is not None and project.site_id != site.pk:
+        raise StockError("That project belongs to another site.")
+    return StockEntry.objects.create(site=site, material=material, kind=kind, qty=qty, by=by, source=source, project=project,
                                      date=date or timezone.localdate(), rate=rate, indent=indent, ref=ref[:80],
                                      party=party[:150], note=note)
 
