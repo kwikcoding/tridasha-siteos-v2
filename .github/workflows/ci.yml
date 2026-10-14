@@ -174,7 +174,8 @@ jobs:
         working-directory: frontend
         run: |
           set +e
-          npm install --no-audit --no-fund > /dev/null 2>&1
+          for i in 1 2 3; do npm install --package-lock-only --no-audit --no-fund > npm-install.log 2>&1 && break; sleep 10; done
+          test -f package-lock.json || { cat npm-install.log; echo "rc=1 (could not resolve dependencies)" > ../npm-audit.txt; exit 0; }
           npm audit --omit=dev --audit-level=high > ../npm-audit.txt 2>&1
           echo "rc=$?" >> ../npm-audit.txt
           cat ../npm-audit.txt

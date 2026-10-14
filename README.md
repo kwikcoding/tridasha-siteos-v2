@@ -71,6 +71,23 @@ DEMO_PASSWORD=choose-one docker compose --profile demo up -d --build
 
 **Settings → Company profile** (admin) holds the company name, GSTIN, PAN, address and logo. These appear in the header and on report exports.
 
+## Backup and restore
+
+```bash
+scripts/backup.sh backups                 # database (pg_dump) + uploaded files + checksums → backups/siteos-siteos-<time>.*
+scripts/restore.sh backups/siteos-siteos-<time> --target siteos_restore     # into a NEW database, files into backend/media-restore
+docker compose run --rm -e DATABASE_URL=postgres://siteos:siteos@db:5432/siteos_restore backend python manage.py dbstats
+```
+
+- A backup is read-only for the running app. The dump is checked to be readable before the script reports success.
+- A restore always goes into a new database:
+  - The checksums are verified first, so a damaged backup is refused.
+  - A database that already exists is never overwritten.
+  - Restoring over the main `siteos` database is refused unless `CONFIRM_REPLACE=siteos` is set.
+- `manage.py dbstats` prints row counts, money and stock totals, and a fingerprint of the file list. Run it on both copies and compare.
+- For the demo stack, prefix with `DB_SERVICE=db-demo DB_NAME=siteos_demo MEDIA_DIR=backend/media-demo`.
+- CI does a full drill on every push: back up, restore, compare the database and every file, refuse to restore over the live database, and detect a corrupted backup.
+
 Next: v1 data import, production setup.
 
 ## Run it locally (Docker — easiest)
