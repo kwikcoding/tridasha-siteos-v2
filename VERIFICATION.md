@@ -1,5 +1,156 @@
 # Tridasha SiteOS v2 — functional & business-logic verification
 
+## Phase 3 — security, isolation, concurrency, performance, backup and release readiness (14 Oct 2026, PR #9, branch `verify-phase-3`)
+
+PR #8 was merged after green CI and a conflict-free check.
+
+All results below are from GitHub Actions. Each job uses its own throw-away PostgreSQL 16 database or Docker stack. Nothing ran against the live v1 site, the production VPS, or the laptop's databases, and demo data exists only in the demo database.
+
+### CI jobs (all green at the final commit — see the PR checks)
+
+| Job | What it proves | Result |
+|---|---|---|
+| backend | 126 tests: engine, API, permissions, cross-department approvals, security, site isolation, concurrency (real parallel transactions), performance at volume | passed |
+| e2e | 31 browser tests (Chromium, production build, demo data): all 14 modules plus Materials & Stock and Team & Roles flows | passed |
+| frontend | type-check and production build | passed |
+| security | pip-audit (Python dependencies), bandit (static scan), npm audit (high severity), no raw HTML / `eval`, no secrets in the repo | passed (2 moderate npm advisories open, see below) |
+| demo-stack | `docker compose --profile demo up` exactly as on the laptop: separate Postgres `siteos_demo`, demo sign-in through the demo frontend, every module has demo rows, main stack never started, demo uploads kept apart, migrations complete | passed |
+| migrations-upgrade | a database built by the previous release (`f723faf`, the version the laptop ran) with data, upgraded to this commit: the plan is additive only, every row kept; then the new migrations were rolled back and re-applied | passed |
+| backup-restore | the real scripts on the Docker stack (detail below) | passed |
+
+### 1. Browser tests: Materials & Stock and Team & Roles (`e2e/test_admin_materials_ui.py`)
+
+- **Stock:**
+  - Issuing more than is in stock is refused, with the message shown. An issue posts.
+  - An adjustment without a reason can't be submitted; with a reason it posts.
+  - Both appear in the ledger, and the Excel download works.
+  - The Site Engineer sees stock but has no "+ Stock entry" button.
+- **Catalogue:**
+  - Add a material.
+  - Upload an .xlsx: the preview shows 1 new, 1 updated and 1 skipped row, and nothing changes until confirmed. After import both rows appear.
+  - Purchase can view but has no upload or add buttons.
+- **Staff logins:**
+  - Admin adds a department, then creates a login (role, department, site, temporary password).
+  - At first sign-in the person can only reach Profile until they set their own password. Then they get exactly the Store Keeper menu, and Team is refused.
+  - Admin deactivates them; the audit log shows it; they can no longer sign in.
+- **Permission matrix:** admin gives Store Keeper "Reports → View". The Store Keeper then sees Reports on their next sign-in. It's taken away again and they're refused again.
+- Management can't read staff or the audit log through the API, even by calling it directly.
+
+### 2. Permissions and approvals across departments (`apps/accounts/tests/test_cross_dept.py`, engine tests)
+
+- **Defect found and fixed:** the person who raised an indent could approve it themselves at 03 (technical), 04 (budget) and 06 (supplier), and could verify, authorise or pay its invoice.
+  - These actions are now removed for the requester.
+  - The administrator can still do them, but only as an override with a written reason, flagged in the history and audit log.
+  - A colleague with the same role can approve.
+- Bills, daily reports and payments: no one approves their own; whoever approved a bill can't pay it; a colleague in the same department can.
+- A person with two roles (engineer + store) gets exactly the union: store steps and engineer steps, but no finance. Their own indent's stock check is allowed (verification), but nothing at 03.
+- Permission-matrix changes apply on the very next request and are audited. Administrator-only powers can't be given to a role.
+- Reports split spend by the department of whoever entered it.
+
+### 3. Demo environment and migrations
+
+See the CI jobs table above.
+- **Migration upgrade:** all rows kept (14 indents, 85 events, 11 stock entries, 4 materials) from the previous release. The plan contained no removals, renames or field changes.
+- **Demo stack:** the services that ran were db-demo, backend-demo and frontend-demo only. The demo engineer signed in through `localhost:5174`.
+
+### 4. Security, data isolation, concurrency and performance
+
+**Security (`apps/core/tests/test_security.py` and the security job):**
+
+| Check | Result |
+|---|---|
+| Dependency vulnerabilities | **Found and fixed:** Django 5.1.15 (9 advisories; 5.1 is out of support) → **5.2 LTS ≥ 5.2.17**; DRF 3.16.1 (2) → **3.17.2**; react-router-dom 6.27.0 (high: XSS / open redirect) → **6.30.6**. pip-audit now finds none. |
+| Static scan (bandit, medium and above) | No issues. Two findings were addressed: outgoing alert calls are restricted to the fixed https provider URLs, and SHA-1 is marked as used only for de-duplication. |
+| CSRF | **Defect found and fixed:** sign-in wasn't CSRF-checked (the API framework only checks signed-in requests). Now enforced. Session requests without a token are refused. |
+| Cookies and headers | Session cookie HttpOnly (Secure in production settings); `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`; `check --deploy` passes |
+| Sign-in rate limit | Refused with 429 after 10 attempts a minute |
+| Signed-out access | 403 on every module endpoint |
+| Mass assignment | Status, approved and paid amounts, reference numbers and equipment location can't be set through edit requests |
+| Files | Upload names can't escape the uploads folder; `/media/` isn't served publicly; files only come through the API after the record's permission check |
+| Audit log | Append-only; there is no route that changes or deletes an entry |
+| Injection | Search text such as `' OR 1=1 --` is treated as text |
+| React | No `dangerouslySetInnerHTML` or `eval`; no secrets committed |
+
+**Data isolation:** a person with every module but only at site B tried each module's record at site A:
+- read, edit, delete, every workflow action, the files and the exports, and filtering lists by site A;
+- they got "not found" (or "not allowed" for actions their role lacks) every time, and saw zero site-A rows in exports and reports;
+- they can't create records at site A or attach a site-B record to a site-A project.
+
+Free equipment (not at any site) is shared, as designed.
+
+**Concurrency** (`test_concurrency.py`): real parallel requests on PostgreSQL.
+
+| Same action fired at the same moment | Outcome |
+|---|---|
+| 4 × pay the full bill | exactly 1 succeeds; paid = approved |
+| 5 × issue the last 10 bags | exactly 1 succeeds; stock 0, never negative |
+| 3 × approve the same indent step | exactly 1 moves it; 1 history entry |
+| 4 × mark the same worker's day | 1 attendance mark |
+| 6 × raise an indent | **Defect found and fixed:** 3 failed with an error. Numbers are now allocated under a lock and all 6 get distinct numbers |
+
+**Performance** (`test_performance.py`): about a year of one busy site.
+- **Data volume:** 2,000 indents; 3,000 stock entries; 3,000 attendance marks; 1,500 bills; 1,000 tasks; 600 quality items; 300 documents; 300 materials; 180 daily reports; 120 equipment.
+- **Fastest screens (CI runner):** most lists answer in 3–26 ms with 1–4 queries; daily reports 12 ms.
+- **Slowest:**
+  - "Indents waiting for me": 350 ms
+  - dashboard counts: 237 ms (15 queries)
+  - reports with all sections: 53 ms
+  - Everything is under the 2 s limit.
+- **Defects found and fixed:** three lists ran one query per row: indents (54 queries for 50 rows), daily reports (102) and quality (52). They now run 2–4 queries whatever the page size, and a test guards this for 10 lists.
+
+### 5. Backup and restore (`scripts/backup.sh`, `scripts/restore.sh`, `manage.py dbstats`)
+
+CI ran a drill on the Docker stack with the full demo data:
+1. Back up (pg_dump custom format, plus uploads and checksums).
+2. Restore into a new database and folder.
+3. Compare.
+
+Results:
+- **Database identical:** row counts of every table, money and stock totals, and the file list.
+- **All uploaded files identical** (6, by SHA-256).
+- Restoring over the live database is refused.
+- Restoring into an existing database is refused.
+- **A corrupted backup is detected** and not restored.
+
+### Defects found in Phase 3 (all fixed, with regression tests)
+
+1. Requester could approve, verify, authorise or pay their own indent (segregation of duties).
+2. Sign-in not CSRF-protected.
+3. Vulnerable dependencies: Django 5.1.15, DRF 3.16.1, react-router-dom 6.27.0.
+4. N+1 queries on the indents, daily-report and quality lists.
+5. Simultaneous indent raises could fail.
+6. Form labels not linked to fields on Materials, New indent and send-back (accessibility).
+7. Outgoing alert calls not restricted to the provider URLs.
+
+### Module status after Phase 3
+
+**Passed (all 14):**
+- Dashboard, Reports, Sites & Projects, Tasks & Schedule
+- Daily Progress, Labour & Attendance, **Materials & Stock**, Indents & Purchase
+- Plant & Equipment, Expenses & Bills, Quality & Safety, Drawings & Documents
+- **Team & Roles**, Settings
+
+Nothing failed, nothing is partially tested, and no module is pending.
+
+### Open issues before production approval
+
+1. **react-router: 2 moderate advisories.**
+   - Open redirect via a backslash in `<Link>` / `useNavigate`, and an SSR deserialisation issue.
+   - Both are fixed only in react-router 7 (a breaking upgrade).
+   - Exposure is low: the app has no server-side rendering, and its links and redirects are built from its own paths, never from user input.
+   - Recommendation: plan the v7 upgrade.
+2. **No committed `package-lock.json`.** Frontend builds aren't pinned to exact transitive versions. Commit one (the laptop has one locally).
+3. **Alerts:** WhatsApp, SMS and email delivery are untested (needs provider accounts).
+4. **Production setup not started (needs your approval):**
+   - HTTPS behind the existing Traefik, production `.env` and secrets, gunicorn with Celery worker and beat
+   - Scheduled backups with off-server copies, monitoring
+   - First admin login, and the v1 data import (needs the v1 Google Sheets as .xlsx)
+5. **Still not built:** PDF export, a Gantt view, a unit-of-measure master, more than one invoice per indent, department-based data scoping.
+6. **Load testing:** concurrency and volume are tested, but many simultaneous users over a sustained period are not.
+7. **Laptop click-through:** run the demo stack on the laptop and click through once.
+
+---
+
 ## Phase 2 — browser verification of every module (14 Oct 2026, PR #8, branch `verify-phase-2`)
 
 **Scope:**
