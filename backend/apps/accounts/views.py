@@ -1,9 +1,10 @@
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.db.models import ProtectedError
-from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.authentication import CSRFCheck
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -41,6 +42,12 @@ def csrf(request):
 @permission_classes([permissions.AllowAny])
 @throttle_classes([LoginThrottle])
 def login_view(request):
+    # DRF checks CSRF only for requests that are already signed in; sign-in itself must be checked too,
+    # otherwise another website could sign a visitor into an account it controls ("login CSRF").
+    check = CSRFCheck(lambda r: None)
+    check.process_request(request._request)
+    if check.process_view(request._request, None, (), {}) is not None:
+        raise PermissionDenied("Security check failed — reload the page and sign in again.")
     ser = LoginSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
     mobile = normalize_mobile(ser.validated_data["mobile"])
@@ -55,9 +62,6 @@ def login_view(request):
     return Response(MeSerializer(user).data)
 
 
-# DRF only checks CSRF for requests that are already signed in; sign-in itself must be protected too
-# (otherwise another website could sign a visitor into an account it controls — "login CSRF").
-login_view = csrf_protect(login_view)
 
 
 @api_view(["POST"])

@@ -102,7 +102,8 @@ class SiteIsolation(SecurityBase):
                 leaks.append(f"insider can't read {url}")
             for method in ("get", "patch", "delete"):
                 r = getattr(out, method)(url, {}, format="json")
-                if r.status_code not in (404, 405):
+                # 403 on DELETE comes from the permission layer before any lookup (no delete right) — reveals nothing
+                if r.status_code not in ((404, 405, 403) if method == "delete" else (404, 405)):
                     leaks.append(f"{method.upper()} {url} → {r.status_code}")
             for a in self.ACTIONS.get(ep, []):
                 r = out.post(f"{url}{a}/", {"note": "x", "action": "approve", "date": TODAY, "amount": "1"}, format="json")
@@ -238,7 +239,8 @@ class WebSecurity(SecurityBase):
         last = AuditLog.objects.latest("id")
         adm = self.c(self.admin)
         for method in ("patch", "put", "delete"):
-            self.assertIn(getattr(adm, method)(f"/api/audit/{last.pk}/", {"summary": "x"}, format="json").status_code, (403, 405))
+            self.assertIn(getattr(adm, method)(f"/api/audit/{last.pk}/", {"summary": "x"}, format="json").status_code,
+                          (403, 404, 405))      # there is no route that changes an entry
         self.assertEqual(AuditLog.objects.count(), n + 1)
 
     def test_search_input_is_treated_as_text(self):

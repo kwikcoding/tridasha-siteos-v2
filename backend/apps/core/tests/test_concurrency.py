@@ -54,7 +54,7 @@ class Concurrency(TransactionTestCase):
             u.sites.add(self.site)
             self.U[key] = u
 
-    def client(self, key):
+    def api(self, key):
         c = APIClient()
         c.force_authenticate(self.U[key])
         return c
@@ -63,7 +63,7 @@ class Concurrency(TransactionTestCase):
         e = Expense.objects.create(site=self.site, date=TODAY, category="Fuel", description="d", payee="P",
                                    amount=Decimal("1000"), status="approved", approved_amount=Decimal("1000"),
                                    approved_by=self.U["management"], created_by=self.U["accounts"])
-        codes = race(4, lambda i: self.client("accounts").post(f"/api/expenses/{e.pk}/pay/",
+        codes = race(4, lambda i: self.api("accounts").post(f"/api/expenses/{e.pk}/pay/",
                                                                 {"date": TODAY, "amount": "1000", "ref": f"UTR{i}"},
                                                                 format="json").status_code)
         e.refresh_from_db()
@@ -74,14 +74,14 @@ class Concurrency(TransactionTestCase):
     def test_issuing_the_last_bags_twice_at_once_never_goes_negative(self):
         m = Material.objects.create(code="CEM", name="Cement", unit="bag")
         StockEntry.objects.create(site=self.site, material=m, kind="IN", qty=10, date=TODAY, by=self.U["store"])
-        codes = race(5, lambda i: self.client("store").post("/api/stock/", {"site": self.site.pk, "material": m.pk, "kind": "OUT",
+        codes = race(5, lambda i: self.api("store").post("/api/stock/", {"site": self.site.pk, "material": m.pk, "kind": "OUT",
                                                                             "qty": 10, "source": "manual"},
                                                              format="json").status_code)
         self.assertEqual(sorted(codes), [201, 400, 400, 400, 400], codes)
         self.assertEqual(StockEntry.balance(self.site.pk, m.pk), 0)
 
     def test_indents_raised_at_the_same_moment_get_distinct_numbers(self):
-        codes = race(6, lambda i: self.client("engineer").post("/api/indents/", {"site": self.site.pk, "item": f"Item {i}",
+        codes = race(6, lambda i: self.api("engineer").post("/api/indents/", {"site": self.site.pk, "item": f"Item {i}",
                                                                                  "qty": 1}, format="json").status_code)
         self.assertEqual(codes, [201] * 6, codes)
         nums = list(Indent.objects.values_list("number", flat=True))
@@ -89,15 +89,15 @@ class Concurrency(TransactionTestCase):
 
     def test_same_attendance_marked_twice_at_once_gives_one_mark(self):
         w = Worker.objects.create(site=self.site, name="W", daily_wage=500, created_by=self.U["supervisor"])
-        codes = race(4, lambda i: self.client("supervisor").post("/api/attendance/mark/", {
+        codes = race(4, lambda i: self.api("supervisor").post("/api/attendance/mark/", {
             "site": self.site.pk, "date": TODAY, "entries": [{"worker": w.pk, "status": "present"}]},
             format="json").status_code)
         self.assertTrue(all(c == 201 for c in codes), codes)              # later ones just re-mark the same day
         self.assertEqual(Attendance.objects.filter(worker=w, date=TODAY).count(), 1)
 
     def test_one_indent_approved_twice_at_once_moves_one_step(self):
-        d = self.client("engineer").post("/api/indents/", {"site": self.site.pk, "item": "Sand", "qty": 1}, format="json").json()
-        codes = race(3, lambda i: self.client("store").post(f"/api/indents/{d['id']}/act/", {"action": "approve"},
+        d = self.api("engineer").post("/api/indents/", {"site": self.site.pk, "item": "Sand", "qty": 1}, format="json").json()
+        codes = race(3, lambda i: self.api("store").post(f"/api/indents/{d['id']}/act/", {"action": "approve"},
                                                              format="json").status_code)
         self.assertEqual(sorted(codes), [200, 400, 400], codes)
         i = Indent.objects.get(pk=d["id"])

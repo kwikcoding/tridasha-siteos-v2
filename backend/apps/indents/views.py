@@ -36,7 +36,7 @@ class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
 
     def get_queryset(self):
         u = self.request.user
-        qs = Indent.objects.select_related("site", "raised_by").prefetch_related(
+        qs = Indent.objects.select_related("site", "project", "raised_by").prefetch_related(
             Prefetch("history", queryset=IndentEvent.objects.select_related("by")))
         if not u.all_sites:
             qs = qs.filter(Q(site__in=u.site_ids()) | Q(raised_by=u))
