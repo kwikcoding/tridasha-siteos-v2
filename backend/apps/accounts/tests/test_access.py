@@ -64,7 +64,7 @@ class AccessControl(TestCase):
         self.assertEqual((u.employee_id, u.must_change_password), ("TDI-042", True))
         self.assertEqual(sorted(x.key for x in u.all_roles()), ["qs", "store"])
         self.assertTrue(AuditLog.objects.filter(action="user.create", target_id=str(u.pk)).exists())
-        for k in ("pm", "management", "store"):
+        for k in ("pm", "qs", "management", "store"):
             self.assertEqual(self.c(self.U[k]).post("/api/users/", {"mobile": "9300000098", "name": "X", "password": PW},
                                                     format="json").status_code, 403)
             self.assertEqual(self.c(self.U[k]).patch(f"/api/roles/{Role.objects.get(key=k).pk}/",
@@ -90,7 +90,10 @@ class AccessControl(TestCase):
         self.act("store", iid, "approve")                      # 02
         self.act("store", iid, "approve", expect=400)          # store can't do 03
         self.act("pm", iid, "approve")                         # 03
-        self.act("management", iid, "approve")                 # 04
+        self.act("management", iid, "approve", expect=400)    # 04a belongs to QS
+        self.act("qs", iid, "approve", data={"boq_ref": "BOQ-1"})
+        self.act("qs", iid, "approve", expect=400)            # QS cannot approve 04b
+        self.act("management", iid, "approve")                 # 04b
         self.act("store", iid, "purchase")                     # stock check
         self.act("purchase", iid, "approve", data={"quotes": [{"vendor": "V", "rate": 400}]})   # 05
         self.act("purchase", iid, "approve", expect=400, data={"vendor_final": "V", "rate": "400"})
@@ -187,7 +190,7 @@ class AccessControl(TestCase):
 
     def test_authoriser_cannot_settle_even_admin(self):
         iid = self.raise_indent()
-        for who, a, kw in [("store", "approve", {}), ("pm", "approve", {}), ("management", "approve", {}),
+        for who, a, kw in [("store", "approve", {}), ("pm", "approve", {}), ("qs", "approve", {"data": {"boq_ref": "BOQ-1"}}), ("management", "approve", {}),
                            ("store", "purchase", {}), ("purchase", "approve", {"data": {"quotes": [{"vendor": "V", "rate": 1}]}}),
                            ("management", "approve", {"data": {"vendor_final": "V", "rate": "1"}}),
                            ("purchase", "po", {"data": {"po_no": "P", "po_vendor": "V"}}),

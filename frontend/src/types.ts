@@ -211,6 +211,11 @@ export interface IndentDetail extends IndentRow {
   };
   stock_note: string;
   spec_note: string;
+  boq_ref: string;
+  boq_qty: string | null;
+  qty_indented_to_date: string | null;
+  budget_remaining: string | null;
+  qs_note: string | null;
   material: number | null;
   stock_at_site: string | null;
   stock_entries: { id: number; date: string; kind: string; qty: string; ref: string; note: string }[];

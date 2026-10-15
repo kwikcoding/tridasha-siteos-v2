@@ -14,7 +14,7 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - **Mobile + password login** (secure session cookie, CSRF, login rate limit).
 - **Admin-managed roles and one login per person** — built-in roles plus custom roles; each role picks the workflow steps it acts on, the modules it can see/change, and whether it works on all sites.
 - **The 12-step indent & purchase workflow** (`backend/apps/indents/workflow.py`), enforced on the server:
-  `01 raise → 02 stock → 03 technical → 04 requirement & budget → stock available? → 05 quotations → 06 supplier → 07 PO → 08 delivery (+09 receive) → 10 issue & close`, then the purchase lane `11 invoice → 12 payment`.
+  `01 raise → 02 stock → 03 technical → 04a quantity & budget check (QS) → 04b requirement & budget approval (Management) → stock available? → 05 quotations → 06 supplier → 07 PO → 08 delivery (+09 receive) → 10 issue & close`, then the purchase lane `11 invoice → 12 payment`.
   Status only changes through `POST /api/indents/{id}/act/`; every action is written to an append-only history.
 - **Alerts**: "indent waiting for you", "sent back / rejected / complete", "delivery overdue" (every 3 h), daily "waiting more than a day" digest. In-app bell always; WhatsApp / email / SMS when configured.
 - **Excel download** of indents.
@@ -155,3 +155,7 @@ frontend/src/
   pages/             Login, Indents, IndentDetail (tracker + actions), NewIndent, Materials, Team
   api.ts auth.tsx    fetch wrapper (CSRF), session/me
 ```
+
+### QS quantity and budget check (04a)
+
+After technical approval, QS checks the BOQ reference, quantity already indented and remaining budget before forwarding to Management (04b). QS may reduce the quantity; missing BOQ references or exceeded BOQ/budget balances need an explanation in Remarks. Requesters cannot check their own indents; administrator overrides require a recorded reason. Settings can switch off 04a independently of the 04b management value limit. Existing indents already at Management stay there.
