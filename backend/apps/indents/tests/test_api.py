@@ -32,6 +32,7 @@ class IndentFlowAPI(TestCase):
         cls.mgmt = mk("9100000004", "Management", "management")
         cls.purchase = mk("9100000005", "Purchase", "purchase")
         cls.accounts = mk("9100000006", "Accounts", "accounts")
+        cls.qs = mk("9100000007", "QS", "qs")
 
     def setUp(self):
         cache.clear()   # login throttle
@@ -76,7 +77,10 @@ class IndentFlowAPI(TestCase):
 
         d = self.act(self.store, iid, "approve", remarks="Stock 30 bags")
         self.assertEqual(d["stage"], "tech")
-        d = self.act(self.pm, iid, "approve", qty_to=80)
+        d = self.act(self.pm, iid, "approve")
+        self.assertEqual(d["stage"], "qs")
+        d = self.act(self.qs, iid, "approve", qty_to=80, data={"boq_ref": "BOQ-1", "boq_qty": 100,
+                                                           "qty_indented_to_date": 20, "budget_remaining": 32000})
         self.assertEqual((d["stage"], float(d["approved_qty"])), ("mgmt", 80.0))
         d = self.act(self.mgmt, iid, "approve")
         self.assertEqual(d["stage"], "avail")
@@ -103,9 +107,9 @@ class IndentFlowAPI(TestCase):
 
         self.assertTrue(all(st["state"] == "done" for st in d["steps"]), d["steps"])
         actions = [h["action"] for h in d["history"]]
-        self.assertEqual(actions, ["raise", "approve", "approve", "approve", "issue", "approve", "approve", "po",
+        self.assertEqual(actions, ["raise", "approve", "approve", "approve", "approve", "issue", "approve", "approve", "po",
                                    "receive", "issueClose", "verifyInv", "authorizePay", "pay"])
-        self.assertEqual(d["history"][8]["grn_no"], "GRN-1")
+        self.assertEqual(d["history"][9]["grn_no"], "GRN-1")
 
     def test_wrong_role_is_refused(self):
         d = self.raise_indent()
@@ -183,3 +187,68 @@ class IndentFlowAPI(TestCase):
         r = self.client_for(self.mgmt).get("/api/indents/export/")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r["Content-Type"].startswith("application/vnd.openxmlformats"))
+
+    def at_qs(self):
+        d = self.raise_indent()
+        self.act(self.store, d["id"], "approve")
+        return self.act(self.pm, d["id"], "approve")
+
+    def test_qs_fields_saved_exposed_and_exported(self):
+        import io
+        from openpyxl import load_workbook
+        d = self.at_qs()
+        data = {"boq_ref": "BOQ-TA-03.2", "boq_qty": "120.000", "qty_indented_to_date": "20.000",
+                "budget_remaining": "40000.00", "qs_note": "Checked take-off"}
+        d = self.act(self.qs, d["id"], "approve", data=data)
+        self.assertEqual(d["stage"], "mgmt")
+        for k, v in data.items():
+            self.assertEqual(d[k], v)
+        self.assertEqual(d["history"][-1]["stage"], "qs")
+        self.assertFalse(d["history"][-1]["override"])
+        self.assertEqual(d["history"][-1]["changes"]["qs_note"], "Checked take-off")
+        r = self.client_for(self.qs).get("/api/indents/export/")
+        ws = load_workbook(io.BytesIO(r.content)).active
+        rows = list(ws.values)
+        row = dict(zip(rows[0], rows[1]))
+        self.assertEqual(row["Boq Ref"], data["boq_ref"])
+        self.assertEqual(row["Boq Qty"], 120)
+        self.assertEqual(row["Qty Indented To Date"], 20)
+        self.assertEqual(row["Budget Remaining"], 40000)
+        self.assertEqual(row["Qs Note"], data["qs_note"])
+
+    def test_negative_qs_fields_rejected_without_changing_stage(self):
+        d = self.at_qs()
+        for k in ("boq_qty", "qty_indented_to_date", "budget_remaining"):
+            self.act(self.qs, d["id"], "approve", expect=400, remarks="No negative values",
+                     data={"boq_ref": "BOQ-1", k: -1})
+        self.assertEqual(Indent.objects.get(pk=d["id"]).stage, "qs")
+
+    def test_qs_notification_respects_assigned_site(self):
+        role = Role.objects.get(key="qs")
+        role.all_sites = False
+        role.save()
+        outsider = User.objects.create_user("9100000088", PW, name="Other site QS", role=role, alert_whatsapp=False)
+        outsider.sites.add(self.other_site)
+        with self.captureOnCommitCallbacks(execute=True):
+            d = self.at_qs()
+        self.assertTrue(Notification.objects.filter(user=self.qs, indent_id=d["id"], kind="waiting").exists())
+        self.assertFalse(Notification.objects.filter(user=outsider, indent_id=d["id"], kind="waiting").exists())
+        self.assertEqual(self.client_for(outsider).get(f"/api/indents/{d['id']}/").status_code, 404)
+
+    def test_existing_management_indent_works_without_qs_fields(self):
+        d = self.raise_indent()
+        Indent.objects.filter(pk=d["id"]).update(stage="mgmt", status="Under Verification")
+        self.assertEqual(self.act(self.mgmt, d["id"], "approve")["stage"], "avail")
+
+    def test_qs_setting_and_step_numbers(self):
+        meta = self.client_for(self.admin).get("/api/workflow/").json()
+        stages = {s["key"]: s for s in meta["stages"]}
+        self.assertEqual(stages["qs"]["n"], "04a")
+        self.assertFalse(stages["qs"]["required"])
+        self.assertEqual(stages["mgmt"]["n"], "04b")
+        c = self.client_for(self.admin)
+        r = c.put("/api/workflow/settings/", {"stages": {"qs": {"on": False}}, "mgmt_limit": 0}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        d = self.raise_indent()
+        self.act(self.store, d["id"], "approve")
+        self.assertEqual(self.act(self.pm, d["id"], "approve")["stage"], "mgmt")

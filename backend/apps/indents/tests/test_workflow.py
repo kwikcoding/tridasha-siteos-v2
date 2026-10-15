@@ -10,6 +10,7 @@ ADMIN = {"id": 1, "admin": True, "stages": []}
 ENGINEER = {"id": 10, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["engineer"]}
 STORE = {"id": 11, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["store"]}
 PM = {"id": 12, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["pm"]}
+QS = {"id": 16, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["qs"]}
 MGMT = {"id": 13, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["management"]}
 PURCHASE = {"id": 14, "admin": False, "stages": wf.DEFAULT_ROLE_STAGES["purchase"],
             "limits": wf.DEFAULT_STEP_ACTIONS["purchase"]}
@@ -41,7 +42,10 @@ class FullPurchaseFlow(unittest.TestCase):
         self.assertEqual(i["stage"], "stock")
         i = act(i, STORE, "approve", cfg)
         self.assertEqual((i["stage"], i["status"]), ("tech", "Under Verification"))
-        i = act(i, PM, "approve", cfg, {"qty_to": 80})
+        i = act(i, PM, "approve", cfg)
+        self.assertEqual(i["stage"], "qs")
+        i = act(i, QS, "approve", cfg, {"qty_to": 80}, {"boq_ref": "BOQ-1", "boq_qty": 100,
+                                                      "qty_indented_to_date": 20, "budget_remaining": 32000})
         self.assertEqual(i["stage"], "mgmt")
         i = act(i, MGMT, "approve", cfg)
         self.assertEqual((i["stage"], i["status"]), ("avail", "Approved"))
@@ -70,8 +74,8 @@ class FullPurchaseFlow(unittest.TestCase):
     def test_fully_from_stock_closes(self):
         cfg = wf.config()
         i = new_indent(cfg, qty=10)
-        for who in (STORE, PM, MGMT):
-            i = act(i, who, "approve", cfg)
+        for who in (STORE, PM, QS, MGMT):
+            i = act(i, who, "approve", cfg, data={"boq_ref": "BOQ-1"} if who == QS else {})
         i = act(i, STORE, "issue", cfg, {"qty": 10})
         self.assertEqual((i["stage"], i["status"]), ("closed", "Stock Issued"))
 
@@ -109,8 +113,8 @@ class Permissions(unittest.TestCase):
 
 def at_invoice(cfg):
     i = new_indent(cfg)
-    for who in (STORE, PM, MGMT):
-        i = act(i, who, "approve", cfg)
+    for who in (STORE, PM, QS, MGMT):
+        i = act(i, who, "approve", cfg, data={"boq_ref": "BOQ-1"} if who == QS else {})
     i = act(i, STORE, "purchase", cfg)
     i = act(i, PURCHASE, "approve", cfg, data={"quotes": [{"vendor": "V", "rate": 1}]})
     i = act(i, MGMT, "approve", cfg, data={"vendor_final": "V", "rate": 1})
@@ -173,13 +177,15 @@ class Settings(unittest.TestCase):
         i = new_indent(cfg, qty=10, est_rate=100)            # value 1,000 < limit
         i = act(i, STORE, "approve", cfg)
         i = act(i, PM, "approve", cfg)
+        self.assertEqual(i["stage"], "qs")
+        i = act(i, QS, "approve", cfg, data={"boq_ref": "BOQ-1"})
         self.assertEqual(i["stage"], "avail")
 
     def test_switch_off_rfq(self):
         cfg = wf.config({"stages": {"rfq": {"on": False}}})
         i = new_indent(cfg)
-        for who in (STORE, PM, MGMT):
-            i = act(i, who, "approve", cfg)
+        for who in (STORE, PM, QS, MGMT):
+            i = act(i, who, "approve", cfg, data={"boq_ref": "BOQ-1"} if who == QS else {})
         i = act(i, STORE, "purchase", cfg)
         self.assertEqual(i["stage"], "vendor")
 
@@ -282,8 +288,8 @@ class Receipts(unittest.TestCase):
     def test_cannot_receive_more_than_ordered(self):
         cfg = wf.config()
         i = new_indent(cfg)
-        for who in (STORE, PM, MGMT):
-            i = act(i, who, "approve", cfg)
+        for who in (STORE, PM, QS, MGMT):
+            i = act(i, who, "approve", cfg, data={"boq_ref": "BOQ-1"} if who == QS else {})
         i = act(i, STORE, "purchase", cfg)
         i = act(i, PURCHASE, "approve", cfg, data={"quotes": [{"vendor": "V", "rate": 1}]})
         i = act(i, MGMT, "approve", cfg, data={"vendor_final": "V", "rate": 1})
@@ -296,3 +302,121 @@ class Receipts(unittest.TestCase):
         self.assertIn("40", str(e.exception))
         i = act(i, STORE, "receive", cfg, {"qty": 40})
         self.assertEqual((i["status"], i["received_qty"]), ("Received", 100))
+
+
+class SelfApproval(unittest.TestCase):
+    """Nobody approves or pays their own indent; the administrator can only as a recorded override."""
+
+    def test_project_head_cannot_approve_own_indent_another_can(self):
+        cfg = wf.config()
+        i = new_indent(cfg, raised_by=PM["id"])
+        i = act(i, STORE, "approve", cfg)
+        self.assertEqual(i["stage"], "tech")
+        self.assertNotIn("approve", wf.allowed_actions(i, PM, cfg))
+        self.assertIn("sendback", wf.allowed_actions(i, PM, cfg))         # can still send it back / hold
+        other_pm = {**PM, "id": 77}
+        self.assertIn("approve", wf.allowed_actions(i, other_pm, cfg))
+
+    def test_management_cannot_approve_own_budget_or_authorise_own_payment(self):
+        cfg = wf.config()
+        i = new_indent(cfg, raised_by=MGMT["id"])
+        for who in (STORE, PM, QS):
+            i = act(i, who, "approve", cfg, data={"boq_ref": "BOQ-1"} if who == QS else {})
+        self.assertEqual(i["stage"], "mgmt")
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "approve", {}, {}, MGMT, cfg)
+        t = wf.plan(i, "approve", {"remarks": "Director is the only approver this week"}, {}, ADMIN, cfg)
+        self.assertTrue(t["override"])                                    # admin can, flagged with a reason
+
+    def test_requester_cannot_verify_own_invoice(self):
+        cfg = wf.config()
+        i = at_invoice(cfg)
+        i["raised_by"] = ACCOUNTS["id"]
+        self.assertNotIn("verifyInv", wf.allowed_actions(i, ACCOUNTS, cfg))
+
+
+class QSCheck(unittest.TestCase):
+    def setUp(self):
+        self.cfg = wf.config()
+        self.i = act(act(new_indent(self.cfg), STORE, "approve", self.cfg), PM, "approve", self.cfg)
+        self.assertEqual(self.i["stage"], "qs")
+
+    def test_switch_off_qs_goes_from_tech_to_management(self):
+        cfg = wf.config({"stages": {"qs": {"on": False}}})
+        i = act(act(new_indent(cfg), STORE, "approve", cfg), PM, "approve", cfg)
+        self.assertEqual(i["stage"], "mgmt")
+
+    def test_qs_still_runs_when_management_is_never_required(self):
+        cfg = wf.config({"mgmt_limit": "never"})
+        i = act(act(new_indent(cfg), STORE, "approve", cfg), PM, "approve", cfg)
+        self.assertEqual(i["stage"], "qs")
+        self.assertEqual(act(i, QS, "approve", cfg, data={"boq_ref": "BOQ-1"})["stage"], "avail")
+
+    def test_reference_or_explanation_required(self):
+        for ref in (None, "", "   "):
+            with self.subTest(ref=ref), self.assertRaisesRegex(wf.WorkflowError, "BOQ reference"):
+                wf.plan(self.i, "approve", {}, {"boq_ref": ref}, QS, self.cfg)
+        self.assertEqual(act(self.i, QS, "approve", self.cfg, {"remarks": "Non-BOQ emergency work"})["stage"], "mgmt")
+
+    def test_over_boq_needs_remark_and_reports_excess(self):
+        data = {"boq_ref": "BOQ-1", "boq_qty": 110, "qty_indented_to_date": 20}
+        with self.assertRaisesRegex(wf.WorkflowError, "exceeds BOQ by 10"):
+            wf.plan(self.i, "approve", {}, data, QS, self.cfg)
+        self.assertEqual(act(self.i, QS, "approve", self.cfg, {"remarks": "Approved scope extension"}, data)["stage"], "mgmt")
+
+    def test_over_budget_needs_remark(self):
+        data = {"boq_ref": "BOQ-1", "budget_remaining": 39999}
+        with self.assertRaisesRegex(wf.WorkflowError, "exceeds the remaining budget"):
+            wf.plan(self.i, "approve", {}, data, QS, self.cfg)
+        self.assertEqual(act(self.i, QS, "approve", self.cfg, {"remarks": "Budget transfer requested"}, data)["stage"], "mgmt")
+
+    def test_reduction_applies_to_both_checks(self):
+        data = {"boq_ref": "BOQ-1", "boq_qty": 100, "qty_indented_to_date": 20, "budget_remaining": 32000}
+        i = act(self.i, QS, "approve", self.cfg, {"qty_to": 80}, data)
+        self.assertEqual((i["stage"], i["approved_qty"]), ("mgmt", 80))
+        for qty in (0, 101):
+            with self.subTest(qty=qty), self.assertRaises(wf.WorkflowError):
+                wf.plan(self.i, "approve", {"qty_to": qty, "remarks": "Not a valid reduction"}, data, QS, self.cfg)
+
+    def test_zero_is_a_real_boq_or_budget_limit(self):
+        for field in ("boq_qty", "budget_remaining"):
+            with self.subTest(field=field), self.assertRaises(wf.WorkflowError):
+                wf.plan(self.i, "approve", {}, {"boq_ref": "BOQ-1", field: 0}, QS, self.cfg)
+
+    def test_negative_numbers_refused_even_with_remark(self):
+        for field in ("boq_qty", "qty_indented_to_date", "budget_remaining"):
+            with self.subTest(field=field), self.assertRaisesRegex(wf.WorkflowError, "negative"):
+                wf.plan(self.i, "approve", {"remarks": "Reason"}, {"boq_ref": "BOQ-1", field: -1}, QS, self.cfg)
+
+    def test_qs_cannot_check_own_request(self):
+        i = {**self.i, "raised_by": QS["id"]}
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "approve", {}, {"boq_ref": "BOQ-1"}, QS, self.cfg)
+        self.assertNotIn("reject", wf.allowed_actions(i, QS, self.cfg))
+
+    def test_admin_override_requires_reason_even_with_qs_role_on_own_request(self):
+        i = {**self.i, "raised_by": ADMIN["id"]}
+        who = {**ADMIN, "stages": ["qs"]}
+        with self.assertRaisesRegex(wf.WorkflowError, "override"):
+            wf.plan(i, "approve", {}, {"boq_ref": "BOQ-1"}, who, self.cfg)
+        self.assertTrue(wf.plan(i, "approve", {"remarks": "Independent QS unavailable"}, {"boq_ref": "BOQ-1"}, who, self.cfg)["override"])
+
+    def test_sendback_previous(self):
+        self.assertEqual(act(self.i, QS, "sendback", self.cfg, {"to": "previous", "remarks": "Check spec"})["stage"], "tech")
+        i = act(self.i, QS, "approve", self.cfg, data={"boq_ref": "BOQ-1"})
+        self.assertEqual(act(i, MGMT, "sendback", self.cfg, {"to": "previous", "remarks": "Recheck BOQ"})["stage"], "qs")
+
+    def test_management_and_qs_cannot_swap_steps(self):
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(self.i, "approve", {}, {"boq_ref": "BOQ-1"}, MGMT, self.cfg)
+        i = act(self.i, QS, "approve", self.cfg, data={"boq_ref": "BOQ-1"})
+        with self.assertRaises(wf.WorkflowError):
+            wf.plan(i, "approve", {}, {}, QS, self.cfg)
+
+    def test_existing_management_indent_stays_at_management(self):
+        i = {**self.i, "stage": "mgmt"}  # saved before this release; no QS history or figures
+        self.assertEqual(act(i, MGMT, "approve", self.cfg)["stage"], "avail")
+
+    def test_qs_fields_belong_only_to_qs(self):
+        self.assertEqual(wf.fields_for_action(self.i, "approve"), {"boq_ref", "boq_qty", "qty_indented_to_date", "budget_remaining", "qs_note"})
+        self.assertEqual(wf.fields_for_action({"stage": "mgmt"}, "approve"), {"budget_note"})

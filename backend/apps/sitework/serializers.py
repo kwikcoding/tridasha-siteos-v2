@@ -85,7 +85,11 @@ class DailyReportSerializer(SiteProjectSerializer):
         validators = []      # one report per site/project/day is checked in validate() with a plain-language message
 
     def get_labour_marked(self, obj):
-        """Attendance marked for the same site/day — a cross-check against the manpower in the report."""
+        """Attendance marked for the same site/day — a cross-check against the manpower in the report.
+        Only on a single report (it would cost two queries per row in a list)."""
+        view = self.context.get("view")
+        if view is not None and getattr(view, "action", "") != "retrieve":
+            return None
         qs = Attendance.objects.filter(site=obj.site, date=obj.date)
         if obj.project_id:
             qs = qs.filter(project=obj.project)

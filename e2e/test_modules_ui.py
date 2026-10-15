@@ -161,11 +161,17 @@ def test_attendance_marked_approved_and_locked(page: Page):
     page.get_by_role("button", name="All present").click()
     page.get_by_role("button", name="Save attendance").click()
     expect(page.get_by_text(re.compile(r"Saved \d+ marks"))).to_be_visible()
+    day = page.get_by_label("Date").input_value()
+    site_id = page.get_by_label("Site").first.input_value()
+    saved = page.request.get(f"{BASE}/api/attendance/?site={site_id}&from={day}&to={day}").json()["count"]
+    assert saved >= 8, (day, saved)                                                     # really stored
     assert not page.get_by_role("button", name="Approve this day").is_visible()      # supervisor can't approve
     sign_out(page)
     sign_in(page, "pm")
     page.goto(BASE + "/labour")
     page.get_by_label("Site").first.select_option(label=SITE)
+    page.get_by_label("Date").fill(day)
+    expect(page.get_by_text(re.compile(r"\b[1-9]\d* present"))).to_be_visible()          # marks loaded
     page.get_by_role("button", name="Approve this day").click()
     expect(page.get_by_text("This day is approved — attendance is locked.")).to_be_visible()
     page.goto(BASE + "/labour?tab=summary")
@@ -373,3 +379,61 @@ def test_materials_catalogue_and_stock_export(page: Page):
     sign_in(page, "safety")
     page.goto(BASE + "/materials")
     expect(page.get_by_text(DENIED)).to_be_visible()
+
+
+def test_qs_checks_boq_balance_before_management_approval(page: Page):
+    sign_in(page, "qs")
+    rows = page.request.get(BASE + "/api/indents/?tab=all").json()["results"]
+    target = next(r for r in rows if r["stage"] == "qs")
+    url = f"{BASE}/indents/{target['id']}"
+    sign_out(page)
+    sign_in(page, "store")
+    page.goto(url)
+    expect(page.get_by_role("button", name="Quantity & budget checked — forward", exact=True)).to_have_count(0)
+    assert page.request.get(BASE + f"/api/indents/{target['id']}/").json()["allowed_actions"] == []
+    sign_out(page)
+    sign_in(page, "qs")
+    page.goto(url)
+    expect(page.get_by_text("04a", exact=True)).to_be_visible()
+    expect(page.get_by_text("04b", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Quantity & budget checked — forward", exact=True).click()
+    page.get_by_label("BOQ reference", exact=True).fill("BOQ-TA-03.2")
+    page.get_by_label("BOQ quantity", exact=True).fill("110")
+    page.get_by_label("Already indented against this BOQ line", exact=True).fill("20")
+    page.get_by_label("Budget remaining (₹)", exact=True).fill("40000")
+    page.get_by_label("QS note", exact=True).fill("Checked Tower A take-off")
+    panel = page.get_by_role("region", name="QS quantity and budget summary")
+    expect(panel.get_by_text("-10", exact=True)).to_have_class(re.compile("text-red-700"))
+    page.get_by_role("button", name="Confirm", exact=True).click()
+    expect(page.get_by_text("Quantity exceeds BOQ by 10 — explain in Remarks.", exact=True)).to_be_visible()
+    page.get_by_label(re.compile("Approve a smaller quantity")).fill("80")
+    expect(panel.get_by_text("10", exact=True)).to_be_visible()
+    with page.expect_response(lambda response: response.url.endswith(f"/api/indents/{target['id']}/act/") and response.request.method == "POST") as action:
+        page.get_by_role("button", name="Confirm", exact=True).click()
+    assert action.value.status == 200
+    expect(panel).to_have_count(0)
+    expect(page.get_by_role("button", name="Quantity & budget checked — forward", exact=True)).to_have_count(0)
+    expect(page.get_by_text("Checked Tower A take-off", exact=True)).to_be_visible()
+    assert page.request.get(BASE + f"/api/indents/{target['id']}/").json()["stage"] == "mgmt"
+    sign_out(page)
+    sign_in(page, "management")
+    page.goto(url)
+    expect(page.get_by_role("button", name="Approve requirement & budget", exact=True)).to_be_visible()
+    expect(page.get_by_text("BOQ-TA-03.2", exact=True)).to_be_visible()
+    expect(page.get_by_text("Checked Tower A take-off", exact=True)).to_be_visible()
+    sign_out(page)
+    sign_in(page, "store")
+    page.goto(url)
+    expect(page.get_by_role("button", name="Quantity & budget checked — forward", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name="Approve requirement & budget", exact=True)).to_have_count(0)
+    assert page.request.get(BASE + f"/api/indents/{target['id']}/").json()["allowed_actions"] == []
+
+
+def test_qs_step_has_optional_settings_switch(page: Page):
+    sign_in(page, "admin")
+    page.goto(BASE + "/settings")
+    page.get_by_role("button", name="Workflow", exact=True).click()
+    row = page.get_by_role("listitem").filter(has_text="Check quantity & budget against BOQ")
+    expect(row.get_by_role("checkbox")).to_be_checked()
+    expect(row.get_by_role("checkbox")).to_be_enabled()
+    expect(page.get_by_role("heading", name="Step 04b — management approval limit", exact=True)).to_be_visible()

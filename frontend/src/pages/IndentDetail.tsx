@@ -12,6 +12,10 @@ const FIELD_META: Record<string, { label: string; type: FieldType }> = {
   stock_seen: { label: "Quantity in stock", type: "number" },
   spec_note: { label: "Specification note", type: "textarea" },
   boq_ref: { label: "BOQ reference", type: "text" },
+  boq_qty: { label: "BOQ quantity", type: "number" },
+  qty_indented_to_date: { label: "Already indented against this BOQ line", type: "number" },
+  budget_remaining: { label: "Budget remaining (₹)", type: "number" },
+  qs_note: { label: "QS note", type: "textarea" },
   budget_note: { label: "Budget note", type: "textarea" },
   quotes: { label: "Quotations", type: "quotes" },
   purchase_note: { label: "Purchase note", type: "textarea" },
@@ -87,6 +91,28 @@ function MoneyPanel({ d, action }: { d: Detail; action: string }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Live BOQ balance uses the quantity being forwarded, including an optional reduction. */
+function QsPanel({ d, data, qtyTo }: { d: Detail; data: Record<string, unknown>; qtyTo: string }) {
+  const optional = (v: unknown) => v === "" || v == null ? null : Number(v);
+  const quantity = optional(qtyTo) ?? Number(d.approved_qty ?? d.qty);
+  const boq = optional(data.boq_qty);
+  const already = optional(data.qty_indented_to_date) ?? 0;
+  const budget = optional(data.budget_remaining);
+  const balance = boq === null ? null : boq - already - quantity;
+  const value = quantity * Number(d.po_rate || d.rate || d.est_rate || 0);
+  return (
+    <section aria-label="QS quantity and budget summary" className="grid gap-2 rounded-lg bg-white px-3 py-2 text-sm sm:grid-cols-3">
+      <div><div className="label">Requested quantity</div>{qtyFmt(d.qty)} {d.unit}</div>
+      <div><div className="label">Quantity to forward</div>{qtyFmt(quantity)} {d.unit}</div>
+      <div><div className="label">BOQ quantity</div>{boq === null ? "—" : qtyFmt(boq)}</div>
+      <div><div className="label">Already indented</div>{qtyFmt(already)}</div>
+      <div><div className="label">Balance after this indent</div><b className={balance !== null && balance < 0 ? "text-red-700" : ""}>{balance === null ? "—" : qtyFmt(balance)}</b></div>
+      <div><div className="label">Indent value / budget remaining</div><span className={budget !== null && value > budget ? "text-red-700" : ""}>{money(value)} / {budget === null ? "—" : money(budget)}</span></div>
+      <p className="text-xs text-slate-600 sm:col-span-3">If there is no BOQ reference, or the quantity or value exceeds the balance, explain why in Remarks.</p>
+    </section>
   );
 }
 
@@ -179,13 +205,14 @@ function ActionForm({ d, action, meta, onDone, onCancel }: { d: Detail; action: 
       )}
       {action === "sendback" && (
         <div>
-          <label className="label">Send back to</label>
-          <select className="input max-w-xs" value={to} onChange={(e) => setTo(e.target.value)}>
+          <label className="label" htmlFor="idt-1">Send back to</label>
+          <select id="idt-1" className="input max-w-xs" value={to} onChange={(e) => setTo(e.target.value)}>
             <option value="requester">The person who raised it</option>
             <option value="previous">The previous step</option>
           </select>
         </div>
       )}
+      {d.stage === "qs" && action === "approve" && <QsPanel d={d} data={data} qtyTo={qtyTo} />}
       {["verifyInv", "authorizePay", "pay"].includes(action) && <MoneyPanel d={d} action={action} />}
       {fields.map((f) => {
         const m = FIELD_META[f] ?? { label: f, type: "text" as FieldType };
@@ -285,6 +312,11 @@ export default function IndentDetail() {
             <Field label="Authorised">{d.pay_auth_amount && money(d.pay_auth_amount)}</Field>
             <Field label="Paid">{d.paid_total && `${money(d.paid_total)}${d.money.outstanding > 0 ? ` · ${money(d.money.outstanding)} to pay` : ""}`}</Field>
             <Field label="Last paid on">{dateFmt(d.paid_on)}</Field>
+            {d.boq_ref && <Field label="BOQ reference">{d.boq_ref}</Field>}
+            {d.boq_qty != null && <Field label="BOQ quantity">{qtyFmt(d.boq_qty)} {d.unit}</Field>}
+            {d.qty_indented_to_date != null && <Field label="Already indented">{qtyFmt(d.qty_indented_to_date)} {d.unit}</Field>}
+            {d.budget_remaining != null && <Field label="Budget remaining">{money(d.budget_remaining)}</Field>}
+            {d.qs_note && <div className="sm:col-span-3"><Field label="QS note">{d.qs_note}</Field></div>}
             <Field label="Estimated rate">{money(d.est_rate)}</Field>
             <div className="sm:col-span-3"><Field label="Purpose">{d.purpose}</Field></div>
             {d.stock_entries?.length > 0 && (

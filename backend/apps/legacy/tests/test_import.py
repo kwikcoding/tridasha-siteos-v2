@@ -125,7 +125,7 @@ class DemoData(TestCase):
         self.assertTrue(store.check_password("Demo-pass-2026"))
         self.assertFalse(store.must_change_password)
         stages = set(Indent.objects.filter(purpose__startswith="[DEMO]").values_list("stage", flat=True))
-        for st in ("stock", "tech", "mgmt", "avail", "rfq", "vendor", "po", "track", "issue", "requester", "closed"):
+        for st in ("stock", "tech", "qs", "mgmt", "avail", "rfq", "vendor", "po", "track", "issue", "requester", "closed"):
             self.assertIn(st, stages)
         pstages = set(Indent.objects.filter(purpose__startswith="[DEMO]").values_list("pstage", flat=True))
         for st in ("invoice", "payauth", "payment"):
@@ -135,7 +135,7 @@ class DemoData(TestCase):
         self.assertGreaterEqual(c.get("/api/auth/pending/").json()["indents"], 3)
         # running again doesn't duplicate
         call_command("seed_demo", password="Demo-pass-2026", stdout=io.StringIO())
-        self.assertEqual(Indent.objects.filter(purpose__startswith="[DEMO]").count(), 14)
+        self.assertEqual(Indent.objects.filter(purpose__startswith="[DEMO]").count(), 15)
         call_command("seed_demo", remove=True, stdout=io.StringIO())
         self.assertEqual(User.objects.filter(employee_id__startswith="DEMO-", is_active=True).count(), 0)
 
@@ -143,3 +143,15 @@ class DemoData(TestCase):
         from django.core.management.base import CommandError
         with self.assertRaises(CommandError):
             call_command("seed_demo", password="short", stdout=io.StringIO())
+
+    def test_existing_demo_set_gets_only_new_qs_example(self):
+        call_command("seed_demo", password="Demo-pass-2026", stdout=io.StringIO())
+        # Represent a pre-QS demo set; only the QS example is absent.
+        Indent.objects.filter(purpose__contains="waiting at 04a QS check").delete()
+        before = dict(Indent.objects.values_list("pk", "stage"))
+        call_command("seed_demo", password="Demo-pass-2026", stdout=io.StringIO())
+        self.assertEqual(Indent.objects.filter(purpose__contains="waiting at 04a QS check", stage="qs").count(), 1)
+        self.assertEqual(dict(Indent.objects.filter(pk__in=before).values_list("pk", "stage")), before)
+        self.assertEqual(Indent.objects.count(), len(before) + 1)
+        call_command("seed_demo", password="Demo-pass-2026", stdout=io.StringIO())
+        self.assertEqual(Indent.objects.count(), len(before) + 1)

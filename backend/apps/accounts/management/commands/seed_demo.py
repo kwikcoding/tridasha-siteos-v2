@@ -100,8 +100,9 @@ class Command(BaseCommand):
                                           date=timezone.localdate() - timedelta(days=7), by=store, note="[DEMO] opening stock")
 
     def indents(self, site, U):
-        if Indent.objects.filter(site=site, purpose__startswith="[DEMO]", status__in=["Requested", "Under Verification"]).count() >= 2:
-            return 0          # already seeded — run --remove first for a fresh set
+        already_seeded = Indent.objects.filter(site=site, purpose__startswith="[DEMO]",
+                                                status__in=["Requested", "Under Verification"]).count() >= 2
+        qs_purpose = "Slab quantities — waiting at 04a QS check (QS)"
         mats = {m.code: m for m in Material.objects.filter(code__startswith="DEMO-")}
 
         n_ind = [0]
@@ -120,7 +121,9 @@ class Command(BaseCommand):
             services.perform_action(i.pk, U[who], action, kw, data)
             return Indent.objects.get(pk=i.pk)
 
-        to_rfq = [("store", "approve"), ("pm", "approve"), ("management", "approve")]
+        qs_check = ("qs", "approve", {"data": {"boq_ref": "BOQ-TA-03.2", "boq_qty": 10000,
+                                               "qty_indented_to_date": 100, "budget_remaining": 10000000}})
+        to_rfq = [("store", "approve"), ("pm", "approve"), qs_check, ("management", "approve")]
         quotes = {"quotes": [{"vendor": "Demo Traders", "rate": 380, "delivery_days": 3},
                              {"vendor": "Sample Suppliers", "rate": 395, "delivery_days": 2}]}
 
@@ -149,7 +152,8 @@ class Command(BaseCommand):
         plan = [
             ("DEMO-CEM", 100, "Tower A slab — waiting at 02 stock check (Store Keeper)", []),
             ("DEMO-TMT12", 3000, "Tower A columns — waiting at 03 technical (Project Head)", [("store", "approve")]),
-            ("DEMO-SAND", 40, "Plastering — waiting at 04 budget approval (Management)", [("store", "approve"), ("pm", "approve")]),
+            ("DEMO-SAND", 40, "Plastering — waiting at 04b budget approval (Management)", to_rfq[:-1]),
+            ("DEMO-CEM", 100, qs_purpose, [("store", "approve"), ("pm", "approve")]),
             ("DEMO-CEM", 800, "Block work — waiting at stock decision (Store Keeper)", to_rfq),
             ("DEMO-AAC", 5000, "Partition walls — waiting at 05 quotations (Purchase)", to_rfq + [("store", "purchase")]),
             ("DEMO-AAC", 2000, "Lift core — waiting at 06 supplier approval (Management)",
@@ -172,6 +176,10 @@ class Command(BaseCommand):
             ("DEMO-SAND", 25, "Wrong grade — sent back to the engineer", [("store", "sendback", {"remarks": "Please confirm zone and grade"})]),
         ]
         for code, qty, purpose, steps in plan:
+            if already_seeded:
+                # Upgrade an existing demo set with just the new QS example; preserve its other workflows.
+                if purpose != qs_purpose or Indent.objects.filter(site=site, purpose=f"[DEMO] {qs_purpose}").exists():
+                    continue
             i = new(code, qty, purpose, by="supervisor" if "Repairs" in purpose else "engineer")
             walk(i, steps)
             made += 1

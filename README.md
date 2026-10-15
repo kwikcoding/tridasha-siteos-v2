@@ -14,7 +14,7 @@ The construction ERP for Tridasha Imperial, rebuilt as:
 - **Mobile + password login** (secure session cookie, CSRF, login rate limit).
 - **Admin-managed roles and one login per person** — built-in roles plus custom roles; each role picks the workflow steps it acts on, the modules it can see/change, and whether it works on all sites.
 - **The 12-step indent & purchase workflow** (`backend/apps/indents/workflow.py`), enforced on the server:
-  `01 raise → 02 stock → 03 technical → 04 requirement & budget → stock available? → 05 quotations → 06 supplier → 07 PO → 08 delivery (+09 receive) → 10 issue & close`, then the purchase lane `11 invoice → 12 payment`.
+  `01 raise → 02 stock → 03 technical → 04a quantity & budget check (QS) → 04b requirement & budget approval (Management) → stock available? → 05 quotations → 06 supplier → 07 PO → 08 delivery (+09 receive) → 10 issue & close`, then the purchase lane `11 invoice → 12 payment`.
   Status only changes through `POST /api/indents/{id}/act/`; every action is written to an append-only history.
 - **Alerts**: "indent waiting for you", "sent back / rejected / complete", "delivery overdue" (every 3 h), daily "waiting more than a day" digest. In-app bell always; WhatsApp / email / SMS when configured.
 - **Excel download** of indents.
@@ -70,6 +70,23 @@ DEMO_PASSWORD=choose-one docker compose --profile demo up -d --build
 - The normal `docker compose up` doesn't start any of this.
 
 **Settings → Company profile** (admin) holds the company name, GSTIN, PAN, address and logo. These appear in the header and on report exports.
+
+## Backup and restore
+
+```bash
+scripts/backup.sh backups                 # database (pg_dump) + uploaded files + checksums → backups/siteos-siteos-<time>.*
+scripts/restore.sh backups/siteos-siteos-<time> --target siteos_restore     # into a NEW database, files into backend/media-restore
+docker compose run --rm -e DATABASE_URL=postgres://siteos:siteos@db:5432/siteos_restore backend python manage.py dbstats
+```
+
+- A backup is read-only for the running app. The dump is checked to be readable before the script reports success.
+- A restore always goes into a new database:
+  - The checksums are verified first, so a damaged backup is refused.
+  - A database that already exists is never overwritten.
+  - Restoring over the main `siteos` database is refused unless `CONFIRM_REPLACE=siteos` is set.
+- `manage.py dbstats` prints row counts, money and stock totals, and a fingerprint of the file list. Run it on both copies and compare.
+- For the demo stack, prefix with `DB_SERVICE=db-demo DB_NAME=siteos_demo MEDIA_DIR=backend/media-demo`.
+- CI does a full drill on every push: back up, restore, compare the database and every file, refuse to restore over the live database, and detect a corrupted backup.
 
 Next: v1 data import, production setup.
 
@@ -138,3 +155,7 @@ frontend/src/
   pages/             Login, Indents, IndentDetail (tracker + actions), NewIndent, Materials, Team
   api.ts auth.tsx    fetch wrapper (CSRF), session/me
 ```
+
+### QS quantity and budget check (04a)
+
+After technical approval, QS checks the BOQ reference, quantity already indented and remaining budget before forwarding to Management (04b). QS may reduce the quantity; missing BOQ references or exceeded BOQ/budget balances need an explanation in Remarks. Requesters cannot check their own indents; administrator overrides require a recorded reason. Settings can switch off 04a independently of the 04b management value limit. Existing indents already at Management stay there.

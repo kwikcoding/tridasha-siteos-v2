@@ -11,10 +11,15 @@ log = logging.getLogger(__name__)
 TIMEOUT = 15
 
 
+PROVIDER_URLS = ("https://graph.facebook.com/", "https://control.msg91.com/", "https://api.msg91.com/")
+
+
 def _post_json(url, payload, headers):
+    if not url.startswith(PROVIDER_URLS):            # only the fixed provider endpoints, https only
+        raise ValueError(f"refusing to call {url.split('?')[0]}")
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
                                  headers={"Content-Type": "application/json", **headers})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:   # noqa: S310 (fixed https URLs below)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:   # nosec B310 — scheme and host checked above
         return resp.status
 
 

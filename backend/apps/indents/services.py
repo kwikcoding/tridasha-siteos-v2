@@ -22,7 +22,8 @@ class ActionDataSerializer(serializers.ModelSerializer):
         extra_kwargs = {f: {"required": False} for f in DATA_FIELDS}
 
     def validate(self, attrs):
-        for k in ("inv_amount", "inv_gst", "pay_auth_amount", "pay_amount", "rate", "po_rate", "est_rate"):
+        for k in ("inv_amount", "inv_gst", "pay_auth_amount", "pay_amount", "rate", "po_rate", "est_rate",
+                  "boq_qty", "qty_indented_to_date", "budget_remaining"):
             if attrs.get(k) is not None and attrs[k] < 0:
                 raise serializers.ValidationError({k: "Can’t be negative."})
         return attrs
@@ -55,7 +56,9 @@ def next_number(site) -> str:
 
 @transaction.atomic
 def raise_indent(user, validated: dict) -> Indent:
-    cfg = WorkflowSettings.load().cfg()
+    WorkflowSettings.load()
+    # numbers are per day across all sites: allocate them one at a time (the row lock is held until commit)
+    cfg = WorkflowSettings.objects.select_for_update().get(pk=1).cfg()
     probe = {"qty": float(validated["qty"]), "est_rate": _engine_value(validated.get("est_rate")),
              "raised_by": user.pk, "history": [{"action": "raise"}]}
     indent = Indent(**validated, raised_by=user, number=next_number(validated["site"]),

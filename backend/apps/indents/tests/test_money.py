@@ -20,7 +20,7 @@ class MoneyControlsAPI(TestCase):
         cls.site = Site.objects.create(code="TIM", name="Tridasha Imperial")
         cls.admin = User.objects.create_superuser("9876543210", PW, name="Admin")
         cls.U = {}
-        for n, role in enumerate(["engineer", "store", "pm", "management", "purchase", "accounts"]):
+        for n, role in enumerate(["engineer", "store", "pm", "management", "purchase", "accounts", "qs"]):
             u = User.objects.create_user(f"92000000{n:02d}", PW, name=role, role=Role.objects.get(key=role))
             u.sites.add(cls.site)
             cls.U[role] = u
@@ -41,7 +41,7 @@ class MoneyControlsAPI(TestCase):
         c.force_authenticate(self.U["engineer"])
         iid = c.post("/api/indents/", {"site": self.site.pk, "item": "Cement", "unit": "bag", "qty": 100,
                                        "est_rate": 400}, format="json").json()["id"]
-        for who, a, kw in [("store", "approve", {}), ("pm", "approve", {}), ("management", "approve", {}),
+        for who, a, kw in [("store", "approve", {}), ("pm", "approve", {}), ("qs", "approve", {"data": {"boq_ref": "BOQ-1"}}), ("management", "approve", {}),
                            ("store", "purchase", {}), ("purchase", "approve", {"data": {"quotes": [{"vendor": "V", "rate": 400}]}}),
                            ("management", "approve", {"data": {"vendor_final": "V", "rate": "400"}}),
                            ("purchase", "po", {"data": {"po_no": "P1", "po_vendor": "V", "po_rate": "400"}}),

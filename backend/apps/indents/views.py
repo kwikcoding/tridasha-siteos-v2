@@ -36,7 +36,7 @@ class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
 
     def get_queryset(self):
         u = self.request.user
-        qs = Indent.objects.select_related("site", "raised_by").prefetch_related(
+        qs = Indent.objects.select_related("site", "project", "raised_by").prefetch_related(
             Prefetch("history", queryset=IndentEvent.objects.select_related("by")))
         if not u.all_sites:
             qs = qs.filter(Q(site__in=u.site_ids()) | Q(raised_by=u))
@@ -123,7 +123,7 @@ class IndentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         cols = ["number", "site", "item", "unit", "qty", "approved_qty", "issued_qty", "purchase_qty", "received_qty",
                 "status", "stage", "pstatus", "need_by", "priority", "raised_by", "po_no", "po_vendor", "po_rate",
                 "po_expected", "inv_no", "inv_amount", "inv_gst", "inv_expected", "pay_auth_amount", "paid_total",
-                "paid_on", "created_at", "closed_at"]
+                "paid_on", "created_at", "closed_at", "boq_ref", "boq_qty", "qty_indented_to_date", "budget_remaining", "qs_note"]
         ws.append([c.replace("_", " ").title() for c in cols])
         for i in qs:
             row = []

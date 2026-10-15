@@ -37,8 +37,8 @@ export default function NewIndent() {
       <p className="mb-6 text-sm text-slate-500">Step 01 — goes to the Storekeeper for a stock check.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="label">Site</label>
-          <select className="input" value={f.site} onChange={set("site")} required>
+          <label className="label" htmlFor="ni-1">Site</label>
+          <select id="ni-1" className="input" value={f.site} onChange={set("site")} required>
             <option value="">Choose a site…</option>
             {activeSites.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
           </select>
@@ -51,24 +51,24 @@ export default function NewIndent() {
         </div>
         {!mat && (
           <div className="sm:col-span-2">
-            <label className="label">…or type the material name (not in catalogue)</label>
-            <input className="input" value={f.item} onChange={set("item")} placeholder="e.g. Shuttering oil" required={!mat} />
+            <label className="label" htmlFor="ni-2">…or type the material name (not in catalogue)</label>
+            <input id="ni-2" className="input" value={f.item} onChange={set("item")} placeholder="e.g. Shuttering oil" required={!mat} />
           </div>
         )}
-        {!mat && <div><label className="label">Item code (optional)</label><input className="input" value={f.item_code} onChange={set("item_code")} /></div>}
-        <div><label className="label">Unit</label><input className="input" value={f.unit} onChange={set("unit")} placeholder="bag, cum, kg, nos" /></div>
-        <div><label className="label">Quantity</label><input className="input" type="number" step="any" min="0" value={f.qty} onChange={set("qty")} required /></div>
-        <div><label className="label">Estimated rate (₹, optional)</label><input className="input" type="number" step="any" min="0" value={f.est_rate} onChange={set("est_rate")} /></div>
-        <div><label className="label">Needed by</label><input className="input" type="date" value={f.need_by} onChange={set("need_by")} /></div>
+        {!mat && <div><label className="label" htmlFor="ni-3">Item code (optional)</label><input id="ni-3" className="input" value={f.item_code} onChange={set("item_code")} /></div>}
+        <div><label className="label" htmlFor="ni-4">Unit</label><input id="ni-4" className="input" value={f.unit} onChange={set("unit")} placeholder="bag, cum, kg, nos" /></div>
+        <div><label className="label" htmlFor="ni-5">Quantity</label><input id="ni-5" className="input" type="number" step="any" min="0" value={f.qty} onChange={set("qty")} required /></div>
+        <div><label className="label" htmlFor="ni-6">Estimated rate (₹, optional)</label><input id="ni-6" className="input" type="number" step="any" min="0" value={f.est_rate} onChange={set("est_rate")} /></div>
+        <div><label className="label" htmlFor="ni-7">Needed by</label><input id="ni-7" className="input" type="date" value={f.need_by} onChange={set("need_by")} /></div>
         <div>
-          <label className="label">Priority</label>
-          <select className="input" value={f.priority} onChange={set("priority")}>
+          <label className="label" htmlFor="ni-8">Priority</label>
+          <select id="ni-8" className="input" value={f.priority} onChange={set("priority")}>
             <option value="normal">Normal</option><option value="urgent">Urgent</option><option value="critical">Critical</option>
           </select>
         </div>
         <div className="sm:col-span-2">
-          <label className="label">Purpose / location of use</label>
-          <textarea className="input" rows={3} value={f.purpose} onChange={set("purpose")} placeholder="e.g. Tower A, 5th floor slab" />
+          <label className="label" htmlFor="ni-9">Purpose / location of use</label>
+          <textarea id="ni-9" className="input" rows={3} value={f.purpose} onChange={set("purpose")} placeholder="e.g. Tower A, 5th floor slab" />
         </div>
       </div>
       {save.error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(save.error as Error).message}</p>}

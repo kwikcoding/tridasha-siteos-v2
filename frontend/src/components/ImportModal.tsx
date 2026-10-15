@@ -63,7 +63,7 @@ export default function ImportModal({ title, endpoint, help, onClose, onDone }: 
       ) : (
         <div className="space-y-4">
           <div className="text-sm text-slate-600">{help}</div>
-          <input type="file" accept=".xlsx,.xlsm,.csv" className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-navy file:px-3 file:py-2 file:text-white"
+          <input type="file" aria-label="Spreadsheet file" accept=".xlsx,.xlsm,.csv" className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-navy file:px-3 file:py-2 file:text-white"
             onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); setError(""); }} />
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           {preview && (
